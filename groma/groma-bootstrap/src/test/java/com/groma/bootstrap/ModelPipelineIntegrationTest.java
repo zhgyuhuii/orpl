@@ -56,7 +56,9 @@ class ModelPipelineIntegrationTest {
             ModelPipelineService.BuildReport report =
                     service.buildFromCorpus(corpus.resolve("data-a.json"), corpus.resolve("data-b.json"));
 
-            Assertions.assertEquals("emergency-deduction", report.modelCode(), "模型编码应与语料一致");
+            Assertions.assertTrue(report.modelCode().startsWith("emergency-deduction-")
+                        && report.modelCode().length() == "emergency-deduction".length() + 9,
+                "模型编码 = 基础码 + 语料摘要短哈希后缀（多版本并存收口）: " + report.modelCode());
             Assertions.assertTrue(report.sourceFileCount() >= 200, "五层出码源文件规模 " + report.sourceFileCount());
             Assertions.assertTrue(report.recompiled(), "首次构建应发生真实编译");
             Assertions.assertTrue(report.javacParity(), "javac 对拍应与 ECJ 一致（完整 JDK 环境）: " + report.javacNote());
@@ -79,7 +81,7 @@ class ModelPipelineIntegrationTest {
                 var runtime = java.util.ServiceLoader
                         .load(com.groma.base.engine.GromaModuleRuntime.class, lease.loader())
                         .iterator().next();
-                Assertions.assertEquals("emergency-deduction", runtime.modelCode(),
+                Assertions.assertTrue(runtime.modelCode().startsWith("emergency-deduction-"),
                         "租约类加载器应能发现生成模块的运行时入口");
             }
             // 幂等复建：同摘要 O(1) 跳过重编

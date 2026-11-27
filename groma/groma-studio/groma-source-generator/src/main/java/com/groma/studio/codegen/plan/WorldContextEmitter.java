@@ -77,9 +77,22 @@ public final class WorldContextEmitter {
             if (PlanModel.KIND_LIST.equals(member.member().kind())
                     && member.value() instanceof CompilePlanIR.RefSpec) {
                 // backing 必须可变（List.of 不可变，后续 add/remove 会 UOE）
-                init.addStatement("this.self.$L(new $T<>(new $T<>($T.of($L)), this.collectionSink(this.self, $S)), this)",
-                        member.member().setterCtx(), PlanModel.OBSERVABLE_LIST, java.util.ArrayList.class,
-                        java.util.List.class, value, member.member().tokenId());
+                // G4 收割（code3.html）：初始集合路径此前只挂普通事件汇，R05 代理定义会漏发——
+                // 与 setter 路径对齐，成员被 PROXY 代理时挂 WithProxies 汇
+                List<String> initProxyIds = model.proxiesByType.getOrDefault(type.typeId(), List.of()).stream()
+                        .filter(px -> px.collectionMemberId().equals(member.member().tokenId()))
+                        .map(CompilePlanIR.ProxyDefIR::proxyEntityId)
+                        .toList();
+                if (initProxyIds.isEmpty()) {
+                    init.addStatement("this.self.$L(new $T<>(new $T<>($T.of($L)), this.collectionSink(this.self, $S)), this)",
+                            member.member().setterCtx(), PlanModel.OBSERVABLE_LIST, java.util.ArrayList.class,
+                            java.util.List.class, value, member.member().tokenId());
+                } else {
+                    CodeBlock proxyList = CodeBlock.join(initProxyIds.stream().map(id -> CodeBlock.of("$S", id)).toList(), ", ");
+                    init.addStatement("this.self.$L(new $T<>(new $T<>($T.of($L)), this.collectionSinkWithProxies(this.self, $S, $T.of($L))), this)",
+                            member.member().setterCtx(), PlanModel.OBSERVABLE_LIST, java.util.ArrayList.class,
+                            java.util.List.class, value, member.member().tokenId(), java.util.List.class, proxyList);
+                }
                 // addRootMember 只收单实体；集合成员的元素由实例构建自行注册
                 continue;
             }

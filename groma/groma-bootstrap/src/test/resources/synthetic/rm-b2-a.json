@@ -1,0 +1,302 @@
+{
+  "success": true,
+  "obj": {
+    "id": "RM_B2_FULL_SPEC",
+    "label": "RM-B2全形状与续跑基准模型",
+    "version": 1,
+    "nodes": [
+      {
+        "id": "folder_scenes",
+        "type": "SCENES",
+        "label": "运行场景",
+        "nodes": [
+          {
+            "id": "node_sc_b2",
+            "entityId": "sc_rm_b2",
+            "type": "SCENE",
+            "label": "全特性与续跑验证场景",
+            "defineViewId": "defineView_sc_b2",
+            "designViewId": "designView_sc_b2",
+            "nodes": []
+          }
+        ]
+      },
+      {
+        "id": "folder_types",
+        "type": "TYPES",
+        "label": "对象类型",
+        "nodes": [
+          {
+            "id": "node_ty_uav",
+            "entityId": "ty_uav",
+            "type": "TYPE",
+            "label": "巡检无人机",
+            "nodes": [
+              {
+                "id": "n_k1",
+                "entityId": "attr_bat",
+                "type": "ATTRIBUTE-MEMBER",
+                "label": "剩余电量"
+              },
+              {
+                "id": "n_k2",
+                "entityId": "proc_exp_twin",
+                "type": "PROCESS",
+                "label": "指数分布孪生巡航"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "entities": [
+      {
+        "id": "sc_rm_b2",
+        "type": "SCENE",
+        "label": "全特性与续跑验证场景",
+        "defineViewId": "defineView_sc_b2",
+        "designViewId": "designView_sc_b2"
+      },
+      {
+        "id": "enum_st",
+        "type": "ENUM",
+        "label": "运行状态",
+        "defineViewId": "defineView_enum_st",
+        "designViewId": "designView_enum_st"
+      },
+      {
+        "id": "st_ready",
+        "type": "STATE",
+        "label": "待命"
+      },
+      {
+        "id": "st_work",
+        "type": "STATE",
+        "label": "作业中"
+      },
+      {
+        "id": "ty_uav",
+        "type": "TYPE",
+        "label": "巡检无人机",
+        "defineViewId": "defineView_uav",
+        "designViewId": "designView_uav"
+      },
+      {
+        "id": "attr_bat",
+        "type": "ATTRIBUTE-MEMBER",
+        "label": "剩余电量",
+        "fieldType": "double",
+        "unit": "%",
+        "defaultValue": "100.0",
+        "typeRange": "BASE"
+      },
+      {
+        "id": "proc_exp_twin",
+        "type": "PROCESS",
+        "label": "指数分布孪生巡航",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 2.0,
+        "distribution": "EXPONENTIAL",
+        "fromRealWorld": "true",
+        "singleton": 1,
+        "defineViewId": "defineView_p_twin",
+        "designViewId": "designView_p_twin"
+      },
+      {
+        "id": "lnk_gap_0",
+        "type": "LINK",
+        "linkType": "agent",
+        "event": "v"
+      },
+      {
+        "id": "lnk_gap_1",
+        "type": "LINK",
+        "linkType": "bidirectional-association",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_2",
+        "type": "LINK",
+        "linkType": "bidirectional-tagged",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_3",
+        "type": "LINK",
+        "linkType": "classification",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_4",
+        "type": "LINK",
+        "linkType": "composition",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_5",
+        "type": "LINK",
+        "linkType": "condition",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_6",
+        "type": "LINK",
+        "linkType": "consumption",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_7",
+        "type": "LINK",
+        "linkType": "control",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_8",
+        "type": "LINK",
+        "linkType": "exhibition",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_9",
+        "type": "LINK",
+        "linkType": "extend",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_10",
+        "type": "LINK",
+        "linkType": "fixed",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_11",
+        "type": "LINK",
+        "linkType": "in-change",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_12",
+        "type": "LINK",
+        "linkType": "in-influence-nonnull",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_13",
+        "type": "LINK",
+        "linkType": "in-influence-nullable",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_14",
+        "type": "LINK",
+        "linkType": "in-out",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_15",
+        "type": "LINK",
+        "linkType": "in-out-influence-nonnull",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_16",
+        "type": "LINK",
+        "linkType": "in-out-influence-nullable",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_17",
+        "type": "LINK",
+        "linkType": "invocation",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_18",
+        "type": "LINK",
+        "linkType": "invocation-self",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_19",
+        "type": "LINK",
+        "linkType": "link",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_20",
+        "type": "LINK",
+        "linkType": "note",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_21",
+        "type": "LINK",
+        "linkType": "out-change",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_22",
+        "type": "LINK",
+        "linkType": "out-influence",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_23",
+        "type": "LINK",
+        "linkType": "overtime-exception",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_24",
+        "type": "LINK",
+        "linkType": "proxy",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_25",
+        "type": "LINK",
+        "linkType": "result",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_26",
+        "type": "LINK",
+        "linkType": "undertime-exception",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_27",
+        "type": "LINK",
+        "linkType": "unidirectional-association",
+        "event": ""
+      },
+      {
+        "id": "lnk_gap_28",
+        "type": "LINK",
+        "linkType": "unidirectional-tagged",
+        "event": ""
+      }
+    ],
+    "cellMap": {
+      "defineView_enum_st": [
+        {
+          "id": "cs1",
+          "data": "st_ready",
+          "type": "STATE",
+          "shape": "node-state",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cs2",
+          "data": "st_work",
+          "type": "STATE",
+          "shape": "node-state",
+          "x": 0,
+          "y": 40
+        }
+      ]
+    }
+  }
+}

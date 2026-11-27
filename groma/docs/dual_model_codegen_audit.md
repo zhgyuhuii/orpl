@@ -430,3 +430,74 @@ P1~P5 全部交付（交接文档 HANDOFF-2026-11-27.md 的未完成事项清零
 | 真机推演 | 开会话（scene2，startPaused）→ step 30 拍 → tick=30、19 实例、1 在途过程（区间行驶单例）、RUNNING |
 
 **已知限制（真机实测）**：同源模型（应急决策推演-关联副本 v647 与 应急决策推演-关联 v825）派生出相同 modelCode（emergency-deduction），热挂载槽互斥、后传顶掉先传——moduleDirName/modelCode 派生不区分版本，多版本并存挂账（建议 moduleDirName 带版本短哈希后缀）。
+
+## 十二、code3.html（Gemini 第三轮存档）核实与收割（2026-11-28 第八轮）
+
+输入：`docs/code3.html`（3.1MB，含对旧快照 d4e1d6c 的诊断报告 + 对含未提交修复工作区快照的"全闭环方案"：差距 E1~E6 + 缺口 G1~G10 + 可落盘代码）。
+
+### 12.1 断言核实矩阵（对照当前工作区逐条源码核查）
+
+| 断言 | 判定 | 证据 |
+|---|---|---|
+| 前半部分 10 条建议（DebugEndpoint 桥接/双轨 pom/lease Bug/单写者/querySubtreeJson/驱逐算法/表达式沙盒/词典/export-zip/docx 版本） | 历史属实、**已全部修复**（其自带修订记录亦承认） | 第二部分各轮交付 |
+| E3a 词典缺"应用"→ model-smart-planning-ying-yong 混拼 | ✅ 属实 | 词典有 `智能筹划=` 无 `应用=`；十一节真机记录实证 |
+| E5a VAL-008 漏扫子过程调用分支概率组（NextIR） | ✅ 属实 | 校验器只扫 TriggerBindingIR/PostActionIR；生成器 CDF 消费 CompilePlanIR.NextIR/PostIR；且语料概率组 0 命中（真缺口但语料不触发） |
+| E5b encode 字段（语料 947/898 个）未进 IR/未校验/未接命名 Tier 1 | ✅ 属实；**语料 encode 全为平台自动码**（dxlx1/gccy1/wb1/znsczzjhznt1/sessionlb 等，拼音首字母+序号，无用户真英文） | 全量语料扫描；naming facade 全调用点第二参传 `""` |
+| G1 R01 多继承 mixinParentIds 生成器零消费 | ✅ 属实（语料去重后 mixin=0 不触发） | 生成器 0 处引用 |
+| G2 R06 结构控制零实现 | ✅ 属实（语料 0 条 edge-control；BaseSimEntity.controlMask 为零消费预留字段） | 全仓 grep |
+| G4 初始集合单对象路径未挂代理事件汇 | ✅ 属实（窄：WorldContextEmitter 场景集合成员单对象绑定路径用普通 sink；setter 路径已挂 WithProxies） | WorldContextEmitter/ModelLayerEmitter 对照 |
+| G6 启动/维持条件复合表达式降注释失效 | ✅ 属实（且真实路径在**属主类型级设计视图**：模型 1 三条 STATE 积水 --condition--> 过程挂在类型视图而非过程自身视图，parseGuards 只扫过程自身视图，**整条规则被静默丢弃**——比 code3 描述的"表达式降级"更严重） | 语料 JSON 逐边实证 + parseGuards guardViews 源码 |
+| G9 R27 notes 采集后零消费（parser 注释明言"出码时写入 Javadoc"未兑现） | ✅ 属实 | 生成器 0 处 notes() 引用 |
+| 孤儿连线（3 condition + 1 invocation-self）无告警 | ⚠️ 定性**不成立**：语料实证四条连线均有画布 cell 且端点可解析——3 条为规范的类型级启动条件（属 G6 缺口）、1 条为 计算降雨汇水 真自调用（R24 挂账语料）；"静默丢弃"为真，但根因是视图归属不是孤儿 | 语料逐边溯源 |
+| E3b RelationManager 中文类名 | ❌ 不属实（RelationLayerEmitter:44 走命名引擎） | 源码 |
+| G10a SETTING-MEMBER 漏收 | ❌ 不属实（parser:1560/1599 已收） | 源码 |
+| G10b 内置图元（CUR-PROCESS-TIME 等）未映射 | ❌ 不属实（parser:1483-1494 已映射，CUR-PROCESS-TIME→SIM_STEP_SECONDS 有存量语义依据，勿改 code3 提议的 elapsedMillis 方案） | 源码 |
+| G5 顶层后置转换未归集 | ❌ 不属实（readPostActions 注释明言"类型/场景设计视图里的顶层调用点共用这一规则"） | 源码 |
+| G3 引用成员缺 ra/rv/rx 派发 | ❌ 不属实（ctx.onMemberChanged 统一派发 ra/rv/rx；RelationManager 走 ra/ar/rx/xr 双视角） | GromaWorldContext:307-319 |
+| E1 双轨合包 / E4 多版本 modelCode / E2 dto+StartDTO / E6 全角清洗 / G3-SingleRef / G7 sourcePc=-1 补偿 / G8 尾递归 | ⚠️ 属实但本期不收（理由见 12.4） | — |
+
+### 12.2 本轮收割（全部按真实 API 适配，code3 原稿幻觉 API 未收）
+
+| 收割项 | 落点 | 内容 |
+|---|---|---|
+| H1 词典补条目 | `groma-glossary.properties` | `应用=application`（修 ying-yong 混拼）+ 通用建模词根（设备/无人机/高级/载荷/电源/电量/开机/关机/充电/演练/关联副本已有） |
+| H2 类型级守卫接入 | `AbModelMergerAndParser.parseGuardsAndExceptions` + parseDef | 守卫视图扩为 过程自身 define/design + **属主类型/场景 define/design**；按目标过程实体归组认领，模型 1 三条积水启动条件首次进入 canStart（begin() 统一消费，手动/触发/默认启动全路径生效） |
+| H3 悬空语义连线审计 | `AbModelMergerAndParser.auditOrphanSemanticLinks` | PRS-WARN-002：语义连线（condition/agent/invocation-self/control/overtime/undertime）端点不可解析或未挂载即告警；规范语料零误杀 |
+| H4 encode 进 IR + VAL-007 补扫 | CompilePlanIR（TypeDefIR/MemberIR/ProcessDefIR +explicitEncode，旧参兼容构造器）+ StaticModelValidator | encode 随 IR 携带；VAL-007 对显式 encode 同口径校验（保留字拦截，存量自动码零误杀）；**命名 Tier 1 接线明确不收**：语料 encode 100% 为平台自动码，无来源标记时任何词法启发式要么把垃圾当类名要么误杀真词，需平台提供 encode 来源标记后再接 |
+| H5 VAL-008 NextIR 补扫 | StaticModelValidator | 子过程调用分支概率组按**节点内分组**求和（与出码 CDF 消费口径一致），≥2 分支超闭区间 ERROR、单分支 WARNING；跨节点同名组不合并 |
+| H6 R06 结构控制（门点求值） | BaseSimEntity（memberControlMask 新增 + controlMask 复用为过程掩码缓存 + memberEnabled/processEnabled/refreshControlMask/applyControlMasks）+ GromaProcessTask（processEnableBits 钩子 + runProcess 推进前门点 + abortByControlDisabled→paa 级联）+ ControlRuleIR + parseControlRules + ModelLayerEmitter（refreshControlMask 覆写 + 受控成员 setter 门点）+ ProcessTaskEmitter（processEnableBits 覆写，叶/流两路） | **不做事件接线与中断广播**：门点求值为宿主枚举状态纯函数（推进前/写入前刷新再查），确定性/存档安全/单写者安全；语义=失能过程推进即 paa 中断、失能成员写入静默忽略（DSM 语义）；多规则同目标按位或（任一源激活即使能） |
+| H7 R01 副父类组合委托 | PlanModel.TypeInfo（+mixinIds/controls/notes）+ ModelLayerEmitter | ReadOnly 接口多继承；实体生成副父类委托实例（复用宿主实例标识，事件同源）+ 委托 Getter/Setter 桥接（主链同名成员让位）+ 成员读写开关表路由 + MEMBERS 元数据表纳入（setInstanceValue/快照寻址） |
+| H8 G6 复合条件表达式编译 | ProcessTaskEmitter | judgeCode 重构为 conditions+expression 通用 conditionJudgeCode；启动/维持条件走同一词法白名单 [0-9 ()&|!] 完整编译（1&&(2||3) → 原生布尔树）；不支持记号降注释且**不再错误地按 AND 直译**（原实现复合表达式被 AND 化属语义错误）；顺修 checkMaintain 双重 isEmpty 死代码、删除 safeCompareOp/inlineLiteral 死路径 |
+| H9 R27 notes 出码 | ModelLayerEmitter.entityJavadoc | 建模备注写入实体类头 Javadoc（兑现 parser 侧文档化意图） |
+| H10 R09/R10 @SemanticTag | 新注解 `SemanticTag`+`SemanticTags`（groma-base-common，RUNTIME 保留可重复）+ RelationLayerEmitter | 关联管理器携带正反向语义标签注解，MCP/文档读取器可反射读取 |
+| H11 G4 初始集合代理汇 | WorldContextEmitter | 场景集合成员单对象绑定路径按成员代理定义挂 collectionSinkWithProxies（与 setter 路径对齐） |
+| H12 合成裁判 | 新 `SyntheticFeatureHarvestEndToEndTest`（hotswap） | 手搭 CompilePlanIR 覆盖 G1/G2/G6/G9/@SemanticTag：生成→确定性 SHA→ECJ 编译→挂载→运行期三幕（关机 paa 中断/受控成员写入门点忽略/开机+复合条件跑完 + mixin 成员委托读写持久化）——语料 1/2 不触发这些特性，此为唯一运行期裁判 |
+
+### 12.3 回归结果与终值
+
+- **studio 链（本轮改动全触及模块）`clean test` BUILD SUCCESS**：base-common 7 / base-engine 17 / connector 12 / base-mcp 5 / websocket 3 / parser 14（含新增悬空审计+encode 用例）/ naming 4（词典条目无副作用）/ source-generator 1 / workspace-sync 1 / compiler-hotswap 11（三模型出码 3 + 真实语料 E2E 4 + 热同步 3 + **合成裁判 1**）= **75 用例 0 失败 0 错误**。
+- 全仓 `clean test`：debug-server 3 绿；importer 9 绿（reactor 重建后复测）；**bootstrap 5 用例中 3 失败——全部来自并行会话在途 WIP，与本轮改动无关**（逐项取证见 12.5）。
+- `tools/regression/scan.py`：除并行会话未跟踪文件 `SyntheticSemanticRuntimeTest.java`（裸 System.out 违 NP-R01，内容未动、已原样保留）外**全仓零违例（exit 0）**。
+- 全仓 21 份 pom XML 有效。
+
+### 12.4 本期不收清单与理由（挂账更新）
+
+| 项 | 理由 |
+|---|---|
+| E1 双轨 pom 合包 | 与被拒收的 code2 块 29 同源：workspace 生成模块不在根 reactor，合包 Profile 会让构建失败；属结构演进（挂账原有） |
+| E4 多版本 modelCode 隔离 | 工作区命名策略变更（-v 后缀/短哈希），影响热挂载槽位协议；挂账原有，需与 E1 一并决策 |
+| E2 dto/{Scene}StartDTO | 生成 Controller 的 startSession 已按 Map 契约发布（ws-protocol/gateway 文档锁定），单方面加 DTO 破坏存量 REST 契约；需前端/网关协同 |
+| encode 接命名 Tier 1 | 语料 encode 100% 平台自动码（本轮全量实证），需平台 encode 来源标记（user vs auto）再接，启发式方案已否决（详见 H4） |
+| E6 全角符号词法清洗 | 无具体复现用例；AstSourceMap 失败已降级不中断（十一节 P2 修复），语料 1/2 出码编译全绿 |
+| G3 SingleRef/MultiRefSet 重构 | 直接引用走 v/ra/rv/rx 事件为既定语义（onMemberChanged 统一派发）；基数校验在 RelationManager 已有 |
+| G7 sourcePc=-1 过程级补偿激活 | 现行为（只发 pca/pcd 事件 + 诊断声明）为已文档化取舍；语料 0 条 R25/R26，无验收抓手 |
+| G8 R24 尾递归消除 | 语料现含 1 条真自调用（计算降雨汇水，类型级视图自环），R24 挂账升级为"真画布自调用已定位"；尾递归改造需先补该过程的运行期验收 |
+| R21 maintainWatcher 反向观察器 | checkMaintain 已逐拍轮询（begin 后每执行拍），watcher 为纯优化无正确性收益；code3 方案未含事件接线设计，属半成品 |
+
+### 12.5 并行会话在途 WIP 取证（bootstrap 3 个失败的责任划定，本轮未动其内容）
+
+工作区存在另一会话 2026-11-28 04:03~04:19 落盘的未跟踪/已改测试（本轮会话 03:52 启动，其内容均非本轮所写，文件未做任何改动）：
+
+1. `SyntheticSemanticRuntimeTest`（未跟踪，04:19；RM-C1 运行期验收/R24 自环/E4 多版本并存收口——正是 §10.3/§12.4 挂账项，方向正确）。其 `mutexCdfPsfPaaAndLastEndRuntimeAcceptance` 失败根因已定位（jshell 直解 IR 取证）：fixture `lnk_agent_guard` 维持条件比较符写反——测试注释意图"护盾值>50 失能→paa"，数据是 `{"code":"<","value":50}`（护盾 100 时规则恒假→按语义首拍即 paa，护盾降为 1 后反而恒真→永无 paa，与断言期望的时序恰好相反）。**修复只需把该 fixture 的 `<` 改 `>`（一行）**；解析与出码两侧行为忠实（本会话 jshell 实证 IR 中 maintain=护盾值<50 正确入库）。此外该测试注释宣称"延迟 2 拍降级赋值"，但 fixture 全文无 delayType/delayValue 字段——修正比较符后 paa 时序虽可成立，注释仍与数据不符，宜一并修订。
+2. `ModelPipelineIntegrationTest` / `PortSessionFlowIntegrationTest`（04:03 修改）：新增断言"模型编码 = 基础码 + 语料摘要短哈希后缀（多版本并存收口）"——对应挂账 E4，但**派生侧实现不在工作区**（PlanModel moduleCode 派生未改），两用例当前必然红。属该会话 TDD 半成品。
+3. 责任划定：本轮 12 个触及模块全绿；scan.py 除上述未跟踪文件外零违例（临时移出验证 exit 0，随即原样还原）。该会话恢复工作时应：修 fixture 比较符 → 实现 E4 派生 → 3 个红用例自然转绿。

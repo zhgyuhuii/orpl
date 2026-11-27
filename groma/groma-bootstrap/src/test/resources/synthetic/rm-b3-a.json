@@ -1,0 +1,46 @@
+{
+  "success": true,
+  "obj": {
+    "id": "RM_B3_EVENT_STORM",
+    "label": "RM-B3事件风暴熔断模型",
+    "version": 1,
+    "nodes": [
+      {
+        "id": "sc_root",
+        "type": "SCENES",
+        "label": "运行场景",
+        "nodes": [
+          {
+            "id": "n_sc",
+            "entityId": "sc_storm",
+            "type": "SCENE",
+            "label": "乒乓风暴场景",
+            "defineViewId": "defineView_storm",
+            "designViewId": "designView_storm",
+            "nodes": []
+          }
+        ]
+      }
+    ],
+    "entities": [
+      {
+        "id": "sc_storm",
+        "type": "SCENE",
+        "label": "乒乓风暴场景"
+      },
+      {
+        "id": "op_ping",
+        "type": "INDEPENDENT-PROCESS",
+        "label": "算子Ping",
+        "timeRelated": "UNRELATED"
+      },
+      {
+        "id": "op_pong",
+        "type": "INDEPENDENT-PROCESS",
+        "label": "算子Pong",
+        "timeRelated": "UNRELATED"
+      }
+    ],
+    "cellMap": {}
+  }
+}

@@ -6,6 +6,7 @@ import com.groma.studio.ir.CompilePlanIR.AssocTypeIR;
 import com.groma.studio.ir.CompilePlanIR.BuiltinIR;
 import com.groma.studio.ir.CompilePlanIR.ConditionIR;
 import com.groma.studio.ir.CompilePlanIR.ConditionRuleIR;
+import com.groma.studio.ir.CompilePlanIR.ControlRuleIR;
 import com.groma.studio.ir.CompilePlanIR.ExceptionFlowIR;
 import com.groma.studio.ir.CompilePlanIR.ProxyDefIR;
 import com.groma.studio.ir.CompilePlanIR.ConstIR;
@@ -267,6 +268,7 @@ public final class AbModelMergerAndParser {
             backfillComponentEnumsFromStates();
             buildProcessDefs();
             buildWiring();
+            auditOrphanSemanticLinks();
 
             CompilePlanIR plan = new CompilePlanIR(
                     DEFAULT_STEP_MS, buildTypeDefs(), List.copyOf(processDefs), buildInstances(), buildAssocTypes(),
@@ -634,7 +636,7 @@ public final class AbModelMergerAndParser {
                 def.params.put(port.entityId(), port);
             }
             parseFlowNodes(def, design, params);
-            GuardBundle guards = parseGuardsAndExceptions(def, repId, entityIds, define, design);
+            GuardBundle guards = parseGuardsAndExceptions(def, repId, entityIds, define, design, topLevelGuardViews());
             List<ConditionRuleIR> starts = guards.starts();
             List<ConditionRuleIR> maintains = guards.maintains();
             List<ExceptionFlowIR> exceptions = guards.exceptions();
@@ -655,7 +657,7 @@ public final class AbModelMergerAndParser {
                     nullableDouble(rep, "distributionParam"), accuracyMillis(rep),
                     text(rep, "javaCode"), text(rep, "designViewId"),
                     List.copyOf(params), List.copyOf(def.localVars), List.copyOf(def.nodes), List.copyOf(def.entries),
-                    List.copyOf(starts), List.copyOf(maintains), List.copyOf(exceptions));
+                    List.copyOf(starts), List.copyOf(maintains), List.copyOf(exceptions), text(rep, "encode"));
         }
 
         /**
@@ -670,8 +672,33 @@ public final class AbModelMergerAndParser {
                 List<ExceptionFlowIR> exceptions
         ) {}
 
+        /** 类型/场景级视图缓存（守卫扫描用；单次解析内只构建一次） */
+        private List<ViewCtx> topLevelGuardViewsCache;
+
+        /** 全部 TYPE/SCENE 实体的 define/design 视图（过程调用点上的启动/维持条件可能挂在任意复合类型视图） */
+        private List<ViewCtx> topLevelGuardViews() {
+            if (topLevelGuardViewsCache != null) {
+                return topLevelGuardViewsCache;
+            }
+            List<ViewCtx> views = new ArrayList<>();
+            for (String eid : entities.keySet()) {
+                if (!"TYPE".equals(typeKind.get(eid)) && !sceneIds.contains(eid) && !"ASSOCIATION".equals(typeKind.get(eid))) {
+                    continue;
+                }
+                JsonNode ent = entities.get(eid);
+                for (String vid : List.of(text(ent, "defineViewId"), text(ent, "designViewId"))) {
+                    ViewCtx v = view(vid);
+                    if (v != null && !views.contains(v)) {
+                        views.add(v);
+                    }
+                }
+            }
+            topLevelGuardViewsCache = List.copyOf(views);
+            return views;
+        }
+
         private GuardBundle parseGuardsAndExceptions(DefCtx def, String repId, List<String> entityIds,
-                                                     ViewCtx define, ViewCtx design) {
+                                                     ViewCtx define, ViewCtx design, List<ViewCtx> ownerViews) {
             List<ConditionRuleIR> starts = new ArrayList<>();
             List<ConditionRuleIR> maintains = new ArrayList<>();
             List<ExceptionFlowIR> exceptions = new ArrayList<>();
@@ -685,6 +712,15 @@ public final class AbModelMergerAndParser {
             }
             if (design != null) {
                 guardViews.add(design);
+            }
+            // 收割（code3.html G6 语料实证）：R22 启动条件/R21 维持条件/R13 源状态前置挂在
+            // 类型/场景设计视图的过程调用点上，且可以在任意复合类型视图（不限于过程直属属主——
+            // 模型 1 实证三条积水条件分属 区域/区间与端点车站/区域与区域内车站 三个类型的视图）。
+            // 按目标过程实体归组、逐 def 认领（targetsThisProcess 过滤），与过程自身视图去重。
+            for (ViewCtx ownerView : topLevelGuardViews()) {
+                if (ownerView != null && ownerView != define && ownerView != design) {
+                    guardViews.add(ownerView);
+                }
             }
             for (ViewCtx v : guardViews) {
                 for (JsonNode edge : v.cells) {
@@ -727,11 +763,27 @@ public final class AbModelMergerAndParser {
                     JsonNode linkEntity = entities.get(text(edge, "data"));
                     String stateLabel = "";
                     OperandIR op;
+                    boolean fromTopLevel = v != define && v != design;
                     if ("STATE".equals(text(source, "type"))) {
                         JsonNode stateEntity = entities.get(text(source, "data"));
                         stateLabel = stateEntity == null ? text(source, "label") : text(stateEntity, "label");
                         String enumId = enumOfState.getOrDefault(text(source, "data"), "");
-                        op = enumId.isEmpty() ? operandOf(def, v, source) : enumMemberOperand(def, v, enumId);
+                        if (fromTopLevel && !enumId.isEmpty()) {
+                            // 类型级守卫：操作数必须从【目标过程宿主的成员链】直接构造（含主父类链），
+                            // 不经视图 cell 解算——复合类型视图里的同枚举成员 cell 属于别的宿主，
+                            // 拼到本过程宿主上是 ECJ 实证的错误宿主调用（getWaterloggingState on null）。
+                            String hostMemberId = hostEnumMemberId(def.ownerTypeId, enumId);
+                            if (hostMemberId.isEmpty()) {
+                                warnings.add("[PRS-WARN-003] 类型级" + lt + "条件: " + text(source, "label")
+                                        + " -> " + text(entities.getOrDefault(text(target, "data"), target), "label")
+                                        + " 源枚举成员不在宿主 " + def.ownerTypeId + " 成员链上，规则降级告警");
+                                continue;
+                            }
+                            op = new MemberPathIR(new SelfIR(GromaTypes.entity(def.ownerTypeId)),
+                                    List.of(hostMemberId), GromaTypes.enumType(enumId));
+                        } else {
+                            op = enumId.isEmpty() ? operandOf(def, v, source) : enumMemberOperand(def, v, enumId);
+                        }
                     } else {
                         op = operandOf(def, v, source, edge);
                     }
@@ -742,8 +794,10 @@ public final class AbModelMergerAndParser {
                     ConditionRuleIR rule = new ConditionRuleIR(
                             op, stateLabel, conditionsOf(linkEntity), describe, expressionOf(linkEntity));
                     if (agent) {
+                        // R21 维持条件只进运行期逐拍检查（checkMaintain → paa）。
+                        // 修复：此前 agent 兼作 canStart 启动门槛——初始不满足时退化为 psf，
+                        // "维持中断"路径永不可达（合成模型 RM-C1 运行期实证）。
                         maintains.add(rule);
-                        starts.add(rule);
                     } else {
                         starts.add(rule);
                     }
@@ -2070,7 +2124,7 @@ public final class AbModelMergerAndParser {
                     memberId, text(entity, "label"), text(entity, "alias"), fieldType, typeRange, refTypeId,
                     flag(entity, "isCollection"), text(entity, "containerType"), text(entity, "defaultValue"),
                     text(entity, "unit"), text(entity, "minValue"), text(entity, "maxValue"), initialState,
-                    text(entity, "description"), slotType(entity));
+                    text(entity, "description"), slotType(entity), text(entity, "encode"));
         }
 
         /**
@@ -2124,7 +2178,8 @@ public final class AbModelMergerAndParser {
                 types.add(new TypeDefIR(typeId, text(entity, "label"), text(entity, "description"),
                         text(entity, "essence"), typeKind.get(typeId), parent,
                         List.copyOf(mixins), List.copyOf(parseProxies(typeId)), List.copyOf(members),
-                        List.copyOf(collectNotes(typeId))));
+                        List.copyOf(collectNotes(typeId)), text(entity, "encode"),
+                        List.copyOf(parseControlRules(typeId))));
             }
             return types;
         }
@@ -2263,6 +2318,151 @@ public final class AbModelMergerAndParser {
                 }
             }
             return out;
+        }
+
+        /**
+         * 收割 R06 结构控制关系（edge-control）：源 STATE 图元 --edge-control--> 目标成员/过程图元。
+         * 语义：源枚举成员处于该状态时目标才使能。挂在本类型的定义/设计视图上；
+         * 成员目标与过程目标分别占用独立 bit 位序（按连线 id 排序保证确定性）。
+         */
+        private List<ControlRuleIR> parseControlRules(String typeId) {
+            List<ControlRuleIR> rules = new ArrayList<>();
+            List<JsonNode> controlEdges = new ArrayList<>();
+            Map<String, ViewCtx> edgeView = new HashMap<>();
+            for (String viewId : List.of(text(entities.get(typeId), "defineViewId"),
+                    text(entities.get(typeId), "designViewId"))) {
+                ViewCtx v = view(viewId);
+                if (v == null) {
+                    continue;
+                }
+                for (JsonNode edge : v.cells) {
+                    if ("LINK".equals(text(edge, "type")) && "control".equals(linkType(edge))) {
+                        controlEdges.add(edge);
+                        edgeView.put(text(edge, "id"), v);
+                    }
+                }
+            }
+            if (controlEdges.isEmpty()) {
+                return List.of();
+            }
+            controlEdges.sort(java.util.Comparator.comparing(edge -> text(edge, "id")));
+            int memberBit = 0;
+            int processBit = 0;
+            for (JsonNode edge : controlEdges) {
+                ViewCtx v = edgeView.get(text(edge, "id"));
+                JsonNode source = v.source(edge);
+                JsonNode target = v.target(edge);
+                if (source == null || target == null || !"STATE".equals(text(source, "type"))) {
+                    continue;
+                }
+                String stateEntityId = text(source, "data");
+                String enumId = enumOfState.getOrDefault(stateEntityId, "");
+                String enumMemberId = enumId.isEmpty() ? "" : enumMemberIdOfType(typeId, enumId);
+                if (enumMemberId.isEmpty()) {
+                    continue;
+                }
+                String label = text(entities.get(stateEntityId), "label");
+                if (label.isEmpty()) {
+                    label = text(source, "label");
+                }
+                String targetData = text(target, "data");
+                if (targetData.isEmpty()) {
+                    continue;
+                }
+                if (isProcessCell(target)) {
+                    rules.add(new ControlRuleIR(enumMemberId, List.of(label), "PROCESS", targetData, processBit++));
+                } else {
+                    rules.add(new ControlRuleIR(enumMemberId, List.of(label), "MEMBER", targetData, memberBit++));
+                }
+            }
+            return rules;
+        }
+
+        /** 本类型上引用指定枚举类型的成员 id（typeRange=ENUM 且 refTypeId 命中） */
+        private String enumMemberIdOfType(String typeId, String enumId) {
+            for (String memberId : typeMembers.getOrDefault(typeId, List.of())) {
+                JsonNode member = entities.get(memberId);
+                if (member != null && "ENUM".equals(text(member, "typeRange"))
+                        && enumId.equals(refTypeIdOf(member))) {
+                    return memberId;
+                }
+            }
+            return "";
+        }
+
+        /**
+         * 指定枚举类型在过程宿主类型（含主父类链）成员表中的成员 id（类型级守卫操作数构造用）。
+         * 返回宿主自己的成员 id，保证生成 getter 在宿主类上真实存在。
+         */
+        private String hostEnumMemberId(String ownerTypeId, String enumId) {
+            String typeId = ownerTypeId;
+            int depth = 0;
+            while (!typeId.isEmpty() && entities.containsKey(typeId) && depth++ < 16) {
+                String memberId = enumMemberIdOfType(typeId, enumId);
+                if (!memberId.isEmpty()) {
+                    return memberId;
+                }
+                JsonNode typeEntity = entities.get(typeId);
+                List<String> parents = resolveParentIds(typeId, typeEntity);
+                typeId = parents.isEmpty() ? "" : parents.get(0);
+            }
+            return "";
+        }
+
+        /**
+         * 收割（code3.html 孤儿连线审计，按语料实证修正判定口径）：交互语义连线
+         * （condition/agent/invocation-self/control/overtime/undertime）两种悬空形态记告警——
+         * ① 连线实体未挂载到任何画布视图且无 target 字段；
+         * ② 连线已挂载，但边端点（source/target cell）在所在视图中不可解析（模型 1 实证：
+         * 3 条 condition + 1 条 invocation-self 均有 cell 但指向端悬空，此前被静默跳过）。
+         */
+        private void auditOrphanSemanticLinks() {
+            Set<String> semanticShapes = Set.of("edge-condition", "edge-agent", "edge-invocation-self",
+                    "edge-control", "edge-overtime-exception", "edge-undertime-exception");
+            Set<String> semanticLinkTypes = Set.of("condition", "agent", "invocation-self",
+                    "control", "overtime-exception", "undertime-exception");
+            for (Map.Entry<String, List<JsonNode>> viewEntry : rawViews.entrySet()) {
+                String viewId = viewEntry.getKey();
+                Set<String> cellIds = new HashSet<>();
+                for (JsonNode cell : viewEntry.getValue()) {
+                    cellIds.add(text(cell, "id"));
+                }
+                for (JsonNode cell : viewEntry.getValue()) {
+                    if (!"LINK".equals(text(cell, "type")) || !semanticShapes.contains(text(cell, "shape"))) {
+                        continue;
+                    }
+                    String sourceCell = text(cell.path("source"), "cell");
+                    String targetCell = text(cell.path("target"), "cell");
+                    boolean dangling = sourceCell.isEmpty() || targetCell.isEmpty()
+                            || !cellIds.contains(sourceCell) || !cellIds.contains(targetCell);
+                    if (!dangling) {
+                        continue;
+                    }
+                    JsonNode linkEntity = entities.get(text(cell, "data"));
+                    String label = linkEntity == null ? text(cell, "label") : text(linkEntity, "label");
+                    warnings.add("[PRS-WARN-002] 悬空语义连线: shape=" + text(cell, "shape")
+                            + ", label=" + label + ", viewId=" + viewId
+                            + " 边端点不可解析（source=" + (sourceCell.isEmpty() ? "缺" : cellIds.contains(sourceCell) ? "有" : "缺")
+                            + "/target=" + (targetCell.isEmpty() ? "缺" : cellIds.contains(targetCell) ? "有" : "缺")
+                            + "），已安全跳过");
+                }
+            }
+            for (Map.Entry<String, JsonNode> entry : entities.entrySet()) {
+                JsonNode ent = entry.getValue();
+                if (!"LINK".equals(text(ent, "type"))) {
+                    continue;
+                }
+                String lt = text(ent, "linkType");
+                if (!semanticLinkTypes.contains(lt) || text(ent, "target").isEmpty()) {
+                    continue;
+                }
+                boolean mounted = rawViews.values().stream().anyMatch(cells -> cells.stream().anyMatch(
+                        cell -> "LINK".equals(text(cell, "type")) && entry.getKey().equals(text(cell, "data"))));
+                if (!mounted) {
+                    warnings.add("[PRS-WARN-002] 孤儿连线实体: id=" + entry.getKey() + ", linkType=" + lt
+                            + ", label=" + text(ent, "label") + " 未挂载到任何画布视图，已安全跳过");
+                }
+            }
         }
 
         private List<InstanceIR> buildInstances() {

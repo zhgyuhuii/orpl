@@ -186,6 +186,20 @@ public abstract class GromaProcessTask {
     protected void checkMaintain() {
     }
 
+    /**
+     * R06 结构控制：本过程关注的过程使能位集合（类型上指向本过程的控制规则位按位或；
+     * 生成代码在类型带控制规则时覆写）。0 = 无控制规则约束（默认，门点零开销）。
+     */
+    protected long processEnableBits() {
+        return 0L;
+    }
+
+    /** R06 控制失能中断：级联取消并派发 paa（与维持中断同一收尾语义） */
+    protected final void abortByControlDisabled() {
+        ctx.emitProcessEvent(this, "paa", "R06 结构控制失能中断");
+        cancelCascade("R06 结构控制失能");
+    }
+
     /** 过程成功收尾：回写双向形参、输出形参（R18/R19/R20），由生成代码实现 */
     protected void onSuccess() {
     }
@@ -514,6 +528,16 @@ public abstract class GromaProcessTask {
         if (host != null && !host.isAlive()) {
             fail("宿主实例已消亡，过程无法继续执行");
             return;
+        }
+        // R06 结构控制门点（收割自 code3.html G2 方案，按门点求值落地）：
+        // 推进前重算宿主控制掩码，关注的控制位全部失能时按中断级联终止。
+        // 求值为宿主枚举状态的纯函数，单写者线程内执行，确定性/存档安全。
+        if (host != null && processEnableBits() != 0L) {
+            host.refreshControlMask(ctx);
+            if (!host.processEnabled(processEnableBits())) {
+                abortByControlDisabled();
+                return;
+            }
         }
         // R21 维持条件逐拍校验（方案 D 收割）：只对运行中的耗时过程检查，中断即级联终止
         if (!hasFlow() || flowEntered) {

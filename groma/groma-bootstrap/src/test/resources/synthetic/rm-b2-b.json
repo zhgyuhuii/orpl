@@ -1,0 +1,462 @@
+{
+  "success": true,
+  "obj": {
+    "cellMap": {
+      "designView_sc_b2": [
+        {
+          "id": "n_p1",
+          "data": "proc_exp_twin",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "指数分布孪生巡航",
+          "defaultStart": "true",
+          "firstStart": "true",
+          "lastEnd": "true",
+          "async": "true"
+        },
+        {
+          "id": "n_m1",
+          "data": "attr_bat",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "剩余电量"
+        },
+        {
+          "id": "c_edge_0",
+          "data": "lnk_gap_0",
+          "type": "LINK",
+          "shape": "edge-agent",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": "v"
+        },
+        {
+          "id": "c_edge_1",
+          "data": "lnk_gap_1",
+          "type": "LINK",
+          "shape": "edge-bidirectional-association",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_2",
+          "data": "lnk_gap_2",
+          "type": "LINK",
+          "shape": "edge-bidirectional-tagged",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_3",
+          "data": "lnk_gap_3",
+          "type": "LINK",
+          "shape": "edge-classification",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_4",
+          "data": "lnk_gap_4",
+          "type": "LINK",
+          "shape": "edge-composition",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_5",
+          "data": "lnk_gap_5",
+          "type": "LINK",
+          "shape": "edge-condition",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_6",
+          "data": "lnk_gap_6",
+          "type": "LINK",
+          "shape": "edge-consumption",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_7",
+          "data": "lnk_gap_7",
+          "type": "LINK",
+          "shape": "edge-control",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_8",
+          "data": "lnk_gap_8",
+          "type": "LINK",
+          "shape": "edge-exhibition",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_9",
+          "data": "lnk_gap_9",
+          "type": "LINK",
+          "shape": "edge-extend",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_10",
+          "data": "lnk_gap_10",
+          "type": "LINK",
+          "shape": "edge-fixed",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_11",
+          "data": "lnk_gap_11",
+          "type": "LINK",
+          "shape": "edge-in-change",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_12",
+          "data": "lnk_gap_12",
+          "type": "LINK",
+          "shape": "edge-in-influence-nonnull",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_13",
+          "data": "lnk_gap_13",
+          "type": "LINK",
+          "shape": "edge-in-influence-nullable",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_14",
+          "data": "lnk_gap_14",
+          "type": "LINK",
+          "shape": "edge-in-out",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_15",
+          "data": "lnk_gap_15",
+          "type": "LINK",
+          "shape": "edge-in-out-influence-nonnull",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_16",
+          "data": "lnk_gap_16",
+          "type": "LINK",
+          "shape": "edge-in-out-influence-nullable",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_17",
+          "data": "lnk_gap_17",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_18",
+          "data": "lnk_gap_18",
+          "type": "LINK",
+          "shape": "edge-invocation-self",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_19",
+          "data": "lnk_gap_19",
+          "type": "LINK",
+          "shape": "edge-link",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_20",
+          "data": "lnk_gap_20",
+          "type": "LINK",
+          "shape": "edge-note",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_21",
+          "data": "lnk_gap_21",
+          "type": "LINK",
+          "shape": "edge-out-change",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_22",
+          "data": "lnk_gap_22",
+          "type": "LINK",
+          "shape": "edge-out-influence",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_23",
+          "data": "lnk_gap_23",
+          "type": "LINK",
+          "shape": "edge-overtime-exception",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_24",
+          "data": "lnk_gap_24",
+          "type": "LINK",
+          "shape": "edge-proxy",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_25",
+          "data": "lnk_gap_25",
+          "type": "LINK",
+          "shape": "edge-result",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_26",
+          "data": "lnk_gap_26",
+          "type": "LINK",
+          "shape": "edge-undertime-exception",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_27",
+          "data": "lnk_gap_27",
+          "type": "LINK",
+          "shape": "edge-unidirectional-association",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        },
+        {
+          "id": "c_edge_28",
+          "data": "lnk_gap_28",
+          "type": "LINK",
+          "shape": "edge-unidirectional-tagged",
+          "source": {
+            "cell": "n_m1",
+            "port": ""
+          },
+          "target": {
+            "cell": "n_p1",
+            "port": ""
+          },
+          "event": ""
+        }
+      ]
+    }
+  }
+}

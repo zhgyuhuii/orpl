@@ -1,6 +1,7 @@
 package com.groma.studio.codegen.plan;
 
 import com.groma.base.common.annotation.GromaMeta;
+import com.groma.base.common.annotation.SemanticTag;
 import com.groma.base.common.container.BidirectionalTie;
 import com.groma.studio.ir.CompilePlanIR;
 import com.palantir.javapoet.AnnotationSpec;
@@ -60,6 +61,15 @@ public final class RelationLayerEmitter {
                             .addMember("kind", "$S", "ASSOCIATION_MANAGER")
                             .addMember("relations", "$S",
                                     assoc.labelLeftToRight() + " / " + assoc.labelRightToLeft())
+                            .build())
+                    // R09/R10 语义标签（收割 code3.html G3 方案）：正反向标签保留至运行期，
+                    // 供 MCP 资源与文档读取器反射读取，不再只存在于画布与 Markdown
+                    .addAnnotation(AnnotationSpec.builder(SemanticTag.class)
+                            .addMember("relationId", "$S", assoc.entityId())
+                            .addMember("targetType", "$S", assoc.rightTypeId())
+                            .addMember("forwardLabel", "$S", assoc.labelLeftToRight())
+                            .addMember("reverseLabel", "$S", assoc.labelRightToLeft())
+                            .addMember("bidirectional", "$L", true)
                             .build())
                     .addJavadoc("$L 强类型双向关联管理器（R08/R10）\n"
                                     + "<p>左端：$L（$L，约束 $L）--($L)--> 右端：$L（$L，约束 $L）</p>\n"

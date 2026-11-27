@@ -127,7 +127,10 @@ public final class PlanModel {
             ClassName serviceImpl,
             List<MemberInfo> ownMembers,
             List<MemberInfo> allMembers,
-            TypeInfo parent
+            TypeInfo parent,
+            List<String> mixinIds,
+            List<CompilePlanIR.ControlRuleIR> controls,
+            List<String> notes
     ) {
         public MemberInfo member(String tokenId) {
             for (MemberInfo m : allMembers) {
@@ -423,7 +426,7 @@ public final class PlanModel {
                     ClassName.get(basePkg + ".model.vo", code + "VO"),
                     ClassName.get(basePkg + ".service", "I" + code + "Service"),
                     ClassName.get(basePkg + ".service.impl", code + "ServiceImpl"),
-                    List.of(), List.of(), null));
+                    List.of(), List.of(), null, List.of(), List.of(), List.of()));
             parentHolder.put(type.entityId(), List.of());
         }
         for (TypeDefIR type : plan.types()) {
@@ -443,8 +446,15 @@ public final class PlanModel {
                 all.addAll(parent.allMembers());
             }
             all.addAll(own);
+            // R01 副父类（mixin）只保留在类型表中真实存在的 id，生成器按此生成组合委托
+            List<String> mixinIds = type.mixinParentIds() == null ? List.of() : type.mixinParentIds().stream()
+                    .filter(id -> !id.isBlank() && types.containsKey(id) && !id.equals(type.entityId()))
+                    .toList();
             types.put(type.entityId(), new TypeInfo(shell.typeId(), shell.zhName(), shell.kind(), shell.code(),
-                    shell.entity(), shell.readOnly(), shell.vo(), shell.service(), shell.serviceImpl(), own, all, parent));
+                    shell.entity(), shell.readOnly(), shell.vo(), shell.service(), shell.serviceImpl(), own, all, parent,
+                    List.copyOf(mixinIds),
+                    type.controls() == null ? List.of() : type.controls(),
+                    type.notes() == null ? List.of() : type.notes()));
         }
 
         // R05 集合代理按所属类型分组（出码消费：集合事件汇同步发代理事件）
@@ -1001,6 +1011,17 @@ public final class PlanModel {
             }
         }
         return label.trim();
+    }
+
+    /** 语料摘要短哈希（SHA-256 前 8 hex）：多版本并存命名后缀 */
+    private static String shortDigest8(String digest) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(md.digest(digest.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    .substring(0, 8);
+        } catch (java.security.NoSuchAlgorithmException never) {
+            throw new IllegalStateException("SHA-256 不可用", never);
+        }
     }
 
     static String toKebab(String input) {

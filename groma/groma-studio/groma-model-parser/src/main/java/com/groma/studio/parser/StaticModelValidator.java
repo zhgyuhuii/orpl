@@ -1,5 +1,6 @@
 package com.groma.studio.parser;
 
+import com.groma.studio.ir.CompilePlanIR;
 import com.groma.studio.ir.GromaModuleIR;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,6 +149,19 @@ public final class StaticModelValidator {
         for (GromaModuleIR.ConstantIR constant : ir.constants()) {
             validateExplicitEncode(constant.entityId(), constant.zhName(), issues);
         }
+        // VAL-007 补扫（code3.html E5b 核实属实）：建模面板显式填写的 encode 字段此前未进校验视野。
+        // 语料实证 encode 多为平台自动码（dxlx1/gccy1/wb1），同样做完整校验——合法码只查保留字冲突。
+        if (ir.compilePlan() != null) {
+            for (CompilePlanIR.TypeDefIR type : ir.compilePlan().types()) {
+                validateExplicitEncodeValue(type.explicitEncode(), type.entityId(), type.zhName(), "类型", issues);
+                for (CompilePlanIR.MemberIR member : type.members()) {
+                    validateExplicitEncodeValue(member.explicitEncode(), member.entityId(), member.zhName(), "成员", issues);
+                }
+            }
+            for (CompilePlanIR.ProcessDefIR proc : ir.compilePlan().processDefs()) {
+                validateExplicitEncodeValue(proc.explicitEncode(), proc.entityId(), proc.zhName(), "过程", issues);
+            }
+        }
 
         // VAL-008：同组互斥分支概率和必须落在 [0.9999, 1.0001] 闭区间（标准 10.4）
         // 分支来源：字段事件触发绑定（TriggerBindingIR）与过程后置动作（PostActionIR）的概率分组
@@ -205,6 +219,42 @@ public final class StaticModelValidator {
             }
         }
 
+        // VAL-008 补扫（code3.html E5a 核实属实）：复合过程内子过程调用分支（CompilePlanIR.NextIR）
+        // 携带的互斥概率组此前不在校验视野，而出码侧 ProcessTaskEmitter 恰恰按"同节点内同组"消费 CDF 采样——
+        // 校验口径与消费口径对齐：按节点内分组求和（组名作用域 = 拆分点，不跨节点合并）。
+        if (ir.compilePlan() != null) {
+            for (CompilePlanIR.ProcessDefIR planProc : ir.compilePlan().processDefs()) {
+                for (CompilePlanIR.NodeIR node : planProc.nodes()) {
+                    Map<String, List<CompilePlanIR.NextIR>> nodeGroups = new LinkedHashMap<>();
+                    for (CompilePlanIR.NextIR next : node.nexts()) {
+                        if (next.probabilityGroup() != null && !next.probabilityGroup().isBlank()) {
+                            nodeGroups.computeIfAbsent(next.probabilityGroup(), k -> new ArrayList<>()).add(next);
+                        }
+                    }
+                    for (Map.Entry<String, List<CompilePlanIR.NextIR>> entry : nodeGroups.entrySet()) {
+                        List<CompilePlanIR.NextIR> group = entry.getValue();
+                        double sum = 0.0D;
+                        for (CompilePlanIR.NextIR next : group) {
+                            sum += next.probability();
+                        }
+                        String elementId = planProc.entityId() + "#pc" + node.pc();
+                        String elementName = planProc.zhName() + "/" + node.zhName();
+                        if (group.size() >= 2 && (sum < PROBABILITY_SUM_MIN || sum > PROBABILITY_SUM_MAX)) {
+                            issues.add(new ValidationIssue(
+                                    "VAL-008", "标准 10.4", Severity.ERROR, elementId, elementName,
+                                    "子过程调用分支互斥组 '" + entry.getKey() + "' 概率和 " + sum
+                                            + " 超出闭区间 [" + PROBABILITY_SUM_MIN + ", " + PROBABILITY_SUM_MAX + "]"));
+                        } else if (group.size() == 1) {
+                            issues.add(new ValidationIssue(
+                                    "VAL-008", "标准 10.4", Severity.WARNING, elementId, elementName,
+                                    "子过程调用分支互斥组 '" + entry.getKey()
+                                            + "' 仅 1 条分支，将退化为独立概率门控"));
+                        }
+                    }
+                }
+            }
+        }
+
         // VAL-010：成员链与引用定位路径深度 ≤64（标准 9.6）
         for (GromaModuleIR.TypeIR ty : ir.domainTypes()) {
             for (GromaModuleIR.FieldIR field : ty.fields() == null ? List.<GromaModuleIR.FieldIR>of() : ty.fields()) {
@@ -246,7 +296,13 @@ public final class StaticModelValidator {
                 Set<Integer> targeted = new HashSet<>();
                 for (GromaModuleIR.SubProcessStepIR sub : subs) {
                     if (sub.nextStepPcs() != null) {
-                        targeted.addAll(sub.nextStepPcs());
+                        // 自环边（R24 自调用回边）不构成入度：唯一节点纯自环的入口就是自身
+                        // （合成模型 RM-C2 实证：parser 入口兜底已正确推断 [0]，校验器不得误报纯环）
+                        for (Integer next : sub.nextStepPcs()) {
+                            if (!next.equals(sub.stepPc())) {
+                                targeted.add(next);
+                            }
+                        }
                     }
                 }
                 long zeroInDegree = subs.stream().filter(s -> !targeted.contains(s.stepPc())).count();
@@ -282,6 +338,20 @@ public final class StaticModelValidator {
         } catch (IllegalArgumentException ex) {
             issues.add(new ValidationIssue(
                     "VAL-007", "标准 8.2", Severity.ERROR, entityId, zhName, ex.getMessage()));
+        }
+    }
+
+    /** 显式 encode 字段校验（VAL-007 补扫）：形态合法才查保留字冲突，空值/乱码形态跳过 */
+    private void validateExplicitEncodeValue(String encode, String entityId, String zhName,
+                                             String elementKind, List<ValidationIssue> issues) {
+        if (encode == null || encode.isBlank() || !EXPLICIT_ENCODE_SHAPE.matcher(encode).matches()) {
+            return;
+        }
+        String problem = UniqueIdentifierGuard.findExplicitEncodeProblem(encode);
+        if (problem != null) {
+            issues.add(new ValidationIssue(
+                    "VAL-007", "标准 8.2", Severity.ERROR, entityId, zhName,
+                    elementKind + "显式编码问题: " + problem));
         }
     }
 

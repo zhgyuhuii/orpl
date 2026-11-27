@@ -145,6 +145,11 @@ public class GromaSessionManager implements AutoCloseable {
             session.bindLoopThread(Thread.currentThread());
             try {
                 session.initializeOnLoop();
+            } catch (StackOverflowError runaway) {
+                // 初始化期默认启动自递归的 SOE 兜底：记录证据并终止会话，不向调用线程裸抛
+                session.recordPublicProblem("SESSION_STACK_OVERFLOW: 初始化栈溢出兜底（疑似自递归深度超限），会话已终止");
+                session.requestTerminate();
+                throw new IllegalStateException("SESSION_STACK_OVERFLOW: 初始化栈溢出兜底，会话已终止", null);
             } finally {
                 session.bindLoopThread(null);
             }
@@ -185,8 +190,16 @@ public class GromaSessionManager implements AutoCloseable {
             try {
                 session.stepExactly(n);
                 for (int i = 0; i < n; i++) {
-                    if (!session.stepOneTickOnLoop()) {
-                        break;
+                    try {
+                        if (!session.stepOneTickOnLoop()) {
+                            break;
+                        }
+                    } catch (StackOverflowError runaway) {
+                        // SOE 会话级兜底（合成模型 RM-C2 实证：真画布自递归裸穿调用线程）：
+                        // 记录问题、终止会话，绝不把 StackOverflowError 抛给 REST/MCP 调用线程
+                        session.recordPublicProblem("SESSION_STACK_OVERFLOW: 会话栈溢出兜底（疑似自递归深度超限），会话已终止");
+                        session.requestTerminate();
+                        throw new IllegalStateException("SESSION_STACK_OVERFLOW: 会话栈溢出兜底，会话已终止", null);
                     }
                 }
             } finally {

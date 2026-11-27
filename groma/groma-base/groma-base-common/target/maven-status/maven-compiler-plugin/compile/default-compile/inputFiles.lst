@@ -1,6 +1,8 @@
 /Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/PageResult.java
 /Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/Result.java
 /Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/annotation/GromaMeta.java
+/Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/annotation/SemanticTag.java
+/Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/annotation/SemanticTags.java
 /Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/container/BidirectionalTie.java
 /Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/container/MultiRefSet.java
 /Users/zyh/work/orpl/groma/groma-base/groma-base-common/src/main/java/com/groma/base/common/container/ObservableEntityList.java

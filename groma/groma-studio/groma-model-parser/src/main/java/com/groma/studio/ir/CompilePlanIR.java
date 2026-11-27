@@ -38,7 +38,9 @@ import java.util.Map;
     /**
      * 对象类型定义
      *
-     * @param kind TYPE / SCENE / ASSOCIATION
+     * @param kind           TYPE / SCENE / ASSOCIATION
+     * @param explicitEncode 建模面板显式填写的编码（encode 字段；平台自动码 dxlx1/gccy1 等由命名引擎 Tier 1 排除）
+     * @param controls       R06 结构控制规则（edge-control：源枚举状态 → 目标成员/过程使能位）
      */
     public record TypeDefIR(
             String entityId,
@@ -50,14 +52,37 @@ import java.util.Map;
             List<String> mixinParentIds,
             List<ProxyDefIR> proxies,
             List<MemberIR> members,
-            List<String> notes
+            List<String> notes,
+            String explicitEncode,
+            List<ControlRuleIR> controls
     ) {
         public TypeDefIR(String entityId, String zhName, String description, String essence,
                          String kind, String primaryParentId, List<MemberIR> members) {
             this(entityId, zhName, description, essence, kind, primaryParentId,
-                    List.of(), List.of(), members, List.of());
+                    List.of(), List.of(), members, List.of(), "", List.of());
+        }
+
+        /** 旧 10 参兼容构造器（encode 为空、无 R06 控制规则） */
+        public TypeDefIR(String entityId, String zhName, String description, String essence,
+                         String kind, String primaryParentId, List<String> mixinParentIds,
+                         List<ProxyDefIR> proxies, List<MemberIR> members, List<String> notes) {
+            this(entityId, zhName, description, essence, kind, primaryParentId,
+                    mixinParentIds, proxies, members, notes, "", List.of());
         }
     }
+
+    /**
+     * R06 结构控制规则（edge-control）：源枚举成员处于 activeStateLabels 之一时，
+     * 目标成员（targetKind=MEMBER）或目标过程（targetKind=PROCESS）才处于使能态。
+     * bitIndex 为目标实体上的使能位序号（成员位与过程位各自从 0 计）。
+     */
+    public record ControlRuleIR(
+            String sourceEnumMemberId,
+            List<String> activeStateLabels,
+            String targetKind,
+            String targetEntityId,
+            int bitIndex
+    ) {}
 
     /** R05 集合成员代理定义（模型 2 智能筹划含 1 组）：集合 collectionMemberId 的元素事件代理转发至下游 */
     public record ProxyDefIR(
@@ -83,11 +108,12 @@ import java.util.Map;
     /**
      * 类型成员
      *
-     * @param typeRange     BASE / ENUM / DEFINE
-     * @param refTypeId     ENUM 的枚举 id 或 DEFINE 的对象类型 id
-     * @param containerType array / set / map（集合成员）
-     * @param initialState  枚举成员的初始状态中文原名
-     * @param javaType      Java 类型占位（见 GromaTypes）
+     * @param typeRange      BASE / ENUM / DEFINE
+     * @param refTypeId      ENUM 的枚举 id 或 DEFINE 的对象类型 id
+     * @param containerType  array / set / map（集合成员）
+     * @param initialState   枚举成员的初始状态中文原名
+     * @param javaType       Java 类型占位（见 GromaTypes）
+     * @param explicitEncode 建模面板显式填写的编码（命名 Tier 1 输入；平台自动码由命名引擎排除规则处理）
      */
     public record MemberIR(
             String entityId,
@@ -104,8 +130,18 @@ import java.util.Map;
             String maxValue,
             String initialState,
             String description,
-            String javaType
-    ) {}
+            String javaType,
+            String explicitEncode
+    ) {
+        /** 旧 15 参兼容构造器（encode 为空） */
+        public MemberIR(String entityId, String zhName, String alias, String fieldType, String typeRange,
+                        String refTypeId, boolean collection, String containerType, String defaultValue,
+                        String unit, String minValue, String maxValue, String initialState,
+                        String description, String javaType) {
+            this(entityId, zhName, alias, fieldType, typeRange, refTypeId, collection, containerType,
+                    defaultValue, unit, minValue, maxValue, initialState, description, javaType, "");
+        }
+    }
 
     /**
      * 关联类型（画布“关联类型”目录下的双向带标签关联）
@@ -155,6 +191,7 @@ import java.util.Map;
      * 过程定义
      *
      * @param ownerKind TYPE / SCENE / INDEPENDENT
+     * @param explicitEncode 建模面板显式填写的编码（命名 Tier 1 输入；平台自动码由命名引擎排除规则处理）
      */
     public record ProcessDefIR(
             String defKey,
@@ -188,8 +225,27 @@ import java.util.Map;
             List<Integer> entryNodes,
             List<ConditionRuleIR> startConditions,
             List<ConditionRuleIR> maintainConditions,
-            List<ExceptionFlowIR> exceptionFlows
+            List<ExceptionFlowIR> exceptionFlows,
+            String explicitEncode
     ) {
+        /** 旧 32 参兼容构造器（encode 为空） */
+        public ProcessDefIR(String defKey, String entityId, String zhName, String description,
+                            String ownerKind, String ownerTypeId, String ownerZhName,
+                            boolean timeConsuming, boolean twinLocked, boolean asyncMode, int singletonMode,
+                            String durationParamType, double timeNormal, String timeUnit,
+                            Double timeMin, Double timeMax, String distribution, Double distMin, Double distMax,
+                            Double distAvg, Double distSd, Double distParam, Long accuracyMs,
+                            String javaCode, String designViewId,
+                            List<PortIR> params, List<LocalVarIR> locals, List<NodeIR> nodes, List<Integer> entryNodes,
+                            List<ConditionRuleIR> startConditions, List<ConditionRuleIR> maintainConditions,
+                            List<ExceptionFlowIR> exceptionFlows) {
+            this(defKey, entityId, zhName, description, ownerKind, ownerTypeId, ownerZhName,
+                    timeConsuming, twinLocked, asyncMode, singletonMode, durationParamType, timeNormal, timeUnit,
+                    timeMin, timeMax, distribution, distMin, distMax, distAvg, distSd, distParam, accuracyMs,
+                    javaCode, designViewId, params, locals, nodes, entryNodes,
+                    startConditions, maintainConditions, exceptionFlows, "");
+        }
+
         public ProcessDefIR(String defKey, String entityId, String zhName, String description,
                             String ownerKind, String ownerTypeId, String ownerZhName,
                             boolean timeConsuming, boolean twinLocked, boolean asyncMode, int singletonMode,

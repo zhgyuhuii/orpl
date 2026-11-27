@@ -5,7 +5,9 @@ com/groma/base/common/Result.class
 com/groma/base/common/util/NullSafeUtils.class
 com/groma/base/common/container/OutSlot.class
 com/groma/base/common/PageResult.class
+com/groma/base/common/annotation/SemanticTags.class
 com/groma/base/common/util/GeoSpatialUtils.class
+com/groma/base/common/annotation/SemanticTag.class
 com/groma/base/common/container/SingleRef.class
 com/groma/base/common/container/BidirectionalTie.class
 com/groma/base/common/util/SeededSampler.class

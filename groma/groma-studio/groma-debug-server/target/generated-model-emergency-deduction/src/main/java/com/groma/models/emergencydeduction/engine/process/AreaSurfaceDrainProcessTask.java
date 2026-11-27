@@ -1,6 +1,7 @@
 package com.groma.models.emergencydeduction.engine.process;
 
 import com.groma.base.common.annotation.GromaMeta;
+import com.groma.base.engine.BaseSimEntity;
 import com.groma.base.engine.BuiltinTools;
 import com.groma.base.engine.GromaProcessTask;
 import com.groma.base.engine.GromaWorldContext;
@@ -156,6 +157,9 @@ public final class AreaSurfaceDrainProcessTask extends GromaProcessTask {
 
     @Override
     protected boolean canStart() {
+        if (!"积水".equals(BaseSimEntity.enumZhLabel((Enum<?>) (self.getWaterloggingState())))) {
+            return false;
+        }
         return true;
     }
 

@@ -1,5 +1,6 @@
 package com.groma.studio.parser;
 
+import com.groma.studio.ir.CompilePlanIR;
 import com.groma.studio.ir.GromaModuleIR;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -73,6 +74,36 @@ class ValidationRulesVal006to010Test {
         Assertions.assertTrue(chinese.issues().stream().noneMatch(i -> "VAL-007".equals(i.ruleId())));
     }
 
+    /**
+     * VAL-007 补扫（code3.html E5b 收割）：建模面板显式填写的 encode 字段此前不在校验视野。
+     * 语料实证存量 encode 均为平台自动码（dxlx1/wb1 等，合法标识符形态）——必须零误杀；
+     * 用户显式填写 Java 保留字（如 class）必须拦截。
+     */
+    @Test
+    void explicitEncodeFieldValidatedWithZeroCorpusFalsePositive() {
+        // 保留字 encode：ERROR
+        CompilePlanIR.TypeDefIR keywordType = new CompilePlanIR.TypeDefIR(
+                "t_kw", "保留字类型", "", "", "TYPE", "", List.of(), List.of(),
+                List.of(), List.of(), "class", List.of());
+        var bad = validator.validate(irOf(List.of(), List.of(typeOf("t_ok", List.of())), Map.of())
+                .withCompilePlan(new CompilePlanIR(1000L, List.of(keywordType),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())));
+        Assertions.assertTrue(bad.issues().stream().anyMatch(i ->
+                "VAL-007".equals(i.ruleId()) && i.message().contains("class")));
+
+        // 存量语料形态（合法标识符但为平台自动码）：零误杀
+        CompilePlanIR.TypeDefIR corpusShaped = new CompilePlanIR.TypeDefIR(
+                "t_corpus", "语料形态类型", "", "", "TYPE", "", List.of(), List.of(),
+                List.of(new CompilePlanIR.MemberIR("m1", "自动码成员", "", "double", "BASE", "",
+                        false, "", "", "", "", "", "", "", "double", "dxlx1")),
+                List.of(), "gccy1", List.of());
+        var good = validator.validate(irOf(List.of(), List.of(typeOf("t_ok2", List.of())), Map.of())
+                .withCompilePlan(new CompilePlanIR(1000L, List.of(corpusShaped),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of())));
+        Assertions.assertTrue(good.passedWithoutErrors());
+        Assertions.assertTrue(good.issues().stream().noneMatch(i -> "VAL-007".equals(i.ruleId())));
+    }
+
     // ---------------- VAL-008：互斥分支概率和 ----------------
 
     @Test
@@ -96,6 +127,54 @@ class ValidationRulesVal006to010Test {
         Assertions.assertTrue(warn.passedWithoutErrors());
         Assertions.assertTrue(warn.issues().stream().anyMatch(i ->
                 "VAL-008".equals(i.ruleId()) && i.severity() == StaticModelValidator.Severity.WARNING));
+    }
+
+    /**
+     * VAL-008 补扫（code3.html E5a 收割）：复合过程内子过程调用分支（CompilePlanIR.NextIR）携带的
+     * 互斥概率组此前不在校验视野，而出码侧恰按"同节点内同组"消费 CDF 采样。校验口径与消费口径对齐：
+     * 组名作用域 = 拆分点（节点内），不同节点的同名组不合并。
+     */
+    @Test
+    void nextBranchProbabilityGroupScannedPerNode() {
+        CompilePlanIR.NextIR overA = new CompilePlanIR.NextIR(1, false, "", List.of(), "", "", 0L, 0.6D, "g_over");
+        CompilePlanIR.NextIR overB = new CompilePlanIR.NextIR(2, false, "", List.of(), "", "", 0L, 0.7D, "g_over");
+        CompilePlanIR.NodeIR overNode = new CompilePlanIR.NodeIR(0, "cell_over", "ent_over", "入口", "TOOL",
+                "x.y", "", false, false, true, false, null, List.of(), List.of(), "",
+                List.of(overA, overB), List.of(), 0, 0);
+        CompilePlanIR.ProcessDefIR overProc = new CompilePlanIR.ProcessDefIR(
+                "proc_over", "proc_over", "超和过程", "", "TYPE", "t1", "测试类-t1",
+                true, false, false, 0, "FIXED", 1.0D, "s", null, null, "", null, null, null, null, null,
+                1000L, "", "", List.of(), List.of(), List.of(overNode), List.of(0),
+                List.of(), List.of());
+        var bad = validator.validate(irOf(List.of(), List.of(typeOf("t1", List.of())), Map.of())
+                .withCompilePlan(new CompilePlanIR(1000L, List.of(), List.of(overProc),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of())));
+        Assertions.assertFalse(bad.passedWithoutErrors());
+        Assertions.assertTrue(bad.issues().stream().anyMatch(i ->
+                "VAL-008".equals(i.ruleId()) && i.severity() == StaticModelValidator.Severity.ERROR
+                        && i.elementId().contains("pc0")));
+
+        // 不同节点的同名组不跨节点合并：各 1 分支 → 两条 WARNING 而非 1 条 ERROR
+        CompilePlanIR.NextIR single1 = new CompilePlanIR.NextIR(1, false, "", List.of(), "", "", 0L, 0.4D, "g_same");
+        CompilePlanIR.NextIR single2 = new CompilePlanIR.NextIR(2, false, "", List.of(), "", "", 0L, 0.6D, "g_same");
+        CompilePlanIR.NodeIR node1 = new CompilePlanIR.NodeIR(0, "c1", "e1", "甲", "TOOL",
+                "x.y", "", false, false, true, false, null, List.of(), List.of(), "",
+                List.of(single1), List.of(), 0, 0);
+        CompilePlanIR.NodeIR node2 = new CompilePlanIR.NodeIR(1, "c2", "e2", "乙", "TOOL",
+                "x.y", "", false, false, false, false, null, List.of(), List.of(), "",
+                List.of(single2), List.of(), 0, 0);
+        CompilePlanIR.ProcessDefIR twoNodeProc = new CompilePlanIR.ProcessDefIR(
+                "proc_two", "proc_two", "双节点过程", "", "TYPE", "t1", "测试类-t1",
+                true, false, false, 0, "FIXED", 1.0D, "s", null, null, "", null, null, null, null, null,
+                1000L, "", "", List.of(), List.of(), List.of(node1, node2), List.of(0),
+                List.of(), List.of());
+        var scoped = validator.validate(irOf(List.of(), List.of(typeOf("t1", List.of())), Map.of())
+                .withCompilePlan(new CompilePlanIR(1000L, List.of(), List.of(twoNodeProc),
+                        List.of(), List.of(), List.of(), List.of(), List.of(), List.of())));
+        Assertions.assertTrue(scoped.passedWithoutErrors());
+        Assertions.assertEquals(2, scoped.issues().stream().filter(i ->
+                "VAL-008".equals(i.ruleId()) && i.severity() == StaticModelValidator.Severity.WARNING).count(),
+                "同组名不同节点应各自给出单分支 WARNING");
     }
 
     // ---------------- VAL-010：成员链深度 ----------------

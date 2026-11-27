@@ -1,0 +1,874 @@
+{
+  "success": true,
+  "obj": {
+    "id": "RM_C1_SEMANTIC_GAPS",
+    "label": "语义挂账收口基准模型",
+    "version": 1,
+    "nodes": [
+      {
+        "id": "folder_scenes_c1",
+        "type": "SCENES",
+        "label": "运行场景",
+        "nodes": [
+          {
+            "id": "node_sc_c1",
+            "entityId": "sc_c1",
+            "type": "SCENE",
+            "label": "语义收口验证场景",
+            "defineViewId": "defineView_sc_c1",
+            "designViewId": "designView_sc_c1",
+            "nodes": [
+              {
+                "id": "n_m1",
+                "entityId": "attr_mode",
+                "type": "ATTRIBUTE-MEMBER",
+                "label": "收口状态成员"
+              },
+              {
+                "id": "n_m2",
+                "entityId": "attr_shield",
+                "type": "ATTRIBUTE-MEMBER",
+                "label": "护盾值"
+              },
+              {
+                "id": "n_m3",
+                "entityId": "attr_times",
+                "type": "ATTRIBUTE-MEMBER",
+                "label": "自调用次数"
+              },
+              {
+                "id": "n_p1",
+                "entityId": "proc_driver_a",
+                "type": "PROCESS",
+                "label": "采样与失败流"
+              },
+              {
+                "id": "n_p2",
+                "entityId": "proc_driver_b",
+                "type": "PROCESS",
+                "label": "维持中断流"
+              },
+              {
+                "id": "n_p3",
+                "entityId": "proc_driver_c",
+                "type": "PROCESS",
+                "label": "结束点级联流"
+              },
+              {
+                "id": "n_p4",
+                "entityId": "proc_failchild",
+                "type": "PROCESS",
+                "label": "必败算子"
+              },
+              {
+                "id": "n_p5",
+                "entityId": "proc_slow",
+                "type": "PROCESS",
+                "label": "慢速巡检"
+              },
+              {
+                "id": "n_p6",
+                "entityId": "proc_guard",
+                "type": "PROCESS",
+                "label": "受护任务"
+              },
+              {
+                "id": "n_p7",
+                "entityId": "proc_cmp",
+                "type": "PROCESS",
+                "label": "空比较"
+              },
+              {
+                "id": "n_p8",
+                "entityId": "proc_flip",
+                "type": "PROCESS",
+                "label": "降级赋值"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "entities": [
+      {
+        "id": "enum_md",
+        "type": "ENUM",
+        "label": "收口状态",
+        "defineViewId": "defineView_enum_md",
+        "designViewId": "designView_enum_md"
+      },
+      {
+        "id": "st_ready",
+        "type": "STATE",
+        "label": "待命"
+      },
+      {
+        "id": "st_a",
+        "type": "STATE",
+        "label": "完成"
+      },
+      {
+        "id": "st_b",
+        "type": "STATE",
+        "label": "降级"
+      },
+      {
+        "id": "st_fault",
+        "type": "STATE",
+        "label": "故障"
+      },
+      {
+        "id": "st_cancel",
+        "type": "STATE",
+        "label": "取消"
+      },
+      {
+        "id": "sc_c1",
+        "type": "SCENE",
+        "label": "语义收口验证场景",
+        "defineViewId": "defineView_sc_c1",
+        "designViewId": "designView_sc_c1"
+      },
+      {
+        "id": "attr_mode",
+        "type": "ATTRIBUTE-MEMBER",
+        "label": "收口状态成员",
+        "fieldType": "收口状态",
+        "typeEntityId": "sc_c1",
+        "typeRange": "ENUM",
+        "refTypeId": "enum_md",
+        "customType": {
+          "id": "enum_md",
+          "label": "收口状态"
+        },
+        "defaultValue": "待命",
+        "stateInitial": "待命"
+      },
+      {
+        "id": "attr_shield",
+        "type": "ATTRIBUTE-MEMBER",
+        "label": "护盾值",
+        "fieldType": "double",
+        "typeEntityId": "sc_c1",
+        "typeRange": "BASE",
+        "defaultValue": "100.0"
+      },
+      {
+        "id": "attr_times",
+        "type": "ATTRIBUTE-MEMBER",
+        "label": "自调用次数",
+        "fieldType": "long",
+        "typeEntityId": "sc_c1",
+        "typeRange": "BASE",
+        "defaultValue": "0"
+      },
+      {
+        "id": "proc_cmp",
+        "type": "PROCESS",
+        "label": "空比较",
+        "timeRelated": "UNRELATED",
+        "innerClass": "compare",
+        "innerType": "eq",
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_cmp",
+        "designViewId": "designView_cmp"
+      },
+      {
+        "id": "proc_flip",
+        "type": "PROCESS",
+        "label": "降级赋值",
+        "timeRelated": "UNRELATED",
+        "innerClass": "assignment",
+        "innerType": "resetToOne",
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_flip",
+        "designViewId": "designView_flip"
+      },
+      {
+        "id": "proc_failchild",
+        "type": "PROCESS",
+        "label": "必败算子",
+        "timeRelated": "UNRELATED",
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_fail",
+        "designViewId": "designView_fail"
+      },
+      {
+        "id": "proc_slow",
+        "type": "PROCESS",
+        "label": "慢速巡检",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 6.0,
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_slow",
+        "designViewId": "designView_slow"
+      },
+      {
+        "id": "proc_guard",
+        "type": "PROCESS",
+        "label": "受护任务",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 8.0,
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_guard",
+        "designViewId": "designView_guard"
+      },
+      {
+        "id": "proc_driver_a",
+        "type": "PROCESS",
+        "label": "采样与失败流",
+        "timeRelated": "UNRELATED",
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_da",
+        "designViewId": "designView_da"
+      },
+      {
+        "id": "proc_driver_b",
+        "type": "PROCESS",
+        "label": "维持中断流",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 12.0,
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_db",
+        "designViewId": "designView_db"
+      },
+      {
+        "id": "proc_driver_c",
+        "type": "PROCESS",
+        "label": "结束点级联流",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 10.0,
+        "typeEntityId": "sc_c1",
+        "defineViewId": "defineView_dc",
+        "designViewId": "designView_dc"
+      },
+      {
+        "id": "lnk_inv_da",
+        "type": "LINK",
+        "linkType": "invocation"
+      },
+      {
+        "id": "lnk_inv_db",
+        "type": "LINK",
+        "linkType": "invocation"
+      },
+      {
+        "id": "lnk_inv_dc",
+        "type": "LINK",
+        "linkType": "invocation"
+      },
+      {
+        "id": "lnk_psf",
+        "type": "LINK",
+        "linkType": "invocation",
+        "event": "psf"
+      },
+      {
+        "id": "lnk_out_a",
+        "type": "LINK",
+        "linkType": "out-change",
+        "probability": 0.5,
+        "probabilityGroup": "g_mutex"
+      },
+      {
+        "id": "lnk_out_b",
+        "type": "LINK",
+        "linkType": "out-change",
+        "probability": 0.5,
+        "probabilityGroup": "g_mutex"
+      },
+      {
+        "id": "lnk_out_fault",
+        "type": "LINK",
+        "linkType": "out-change",
+        "probability": 1.0
+      },
+      {
+        "id": "lnk_fixed_shield",
+        "type": "LINK",
+        "linkType": "fixed"
+      },
+      {
+        "id": "lnk_cond_fail",
+        "type": "LINK",
+        "linkType": "condition",
+        "logic": {
+          "entityId": "",
+          "dataType": "",
+          "expression": "",
+          "conditions": [
+            {
+              "index": 1,
+              "code": ">=",
+              "value": 1
+            }
+          ]
+        }
+      },
+      {
+        "id": "lnk_agent_guard",
+        "type": "LINK",
+        "linkType": "agent",
+        "logic": {
+          "entityId": "",
+          "dataType": "",
+          "expression": "",
+          "conditions": [
+            {
+              "index": 1,
+              "code": "<",
+              "value": 50
+            }
+          ]
+        }
+      },
+      {
+        "id": "lnk_out_cancel",
+        "type": "LINK",
+        "linkType": "out-change",
+        "probability": 1.0
+      }
+    ],
+    "cellMap": {
+      "defineView_enum_md": [
+        {
+          "id": "cs_ready",
+          "data": "st_ready",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "待命",
+          "stateInitial": "true",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cs_a",
+          "data": "st_a",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "完成",
+          "x": 0,
+          "y": 20
+        },
+        {
+          "id": "cs_b",
+          "data": "st_b",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "降级",
+          "x": 0,
+          "y": 40
+        },
+        {
+          "id": "cs_fault",
+          "data": "st_fault",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "故障",
+          "x": 0,
+          "y": 60
+        },
+        {
+          "id": "cs_cancel",
+          "data": "st_cancel",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "取消",
+          "x": 0,
+          "y": 80
+        }
+      ],
+      "defineView_fail": [
+        {
+          "id": "cf_times",
+          "data": "attr_times",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "自调用次数",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cf_node",
+          "data": "proc_failchild",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "必败算子",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cf_edge",
+          "data": "lnk_cond_fail",
+          "type": "LINK",
+          "shape": "edge-condition",
+          "source": {
+            "cell": "cf_times",
+            "port": ""
+          },
+          "target": {
+            "cell": "cf_node",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_fail": [
+        {
+          "id": "cf_cmp",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "空比较",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "defineView_guard": [
+        {
+          "id": "cg_shield",
+          "data": "attr_shield",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "护盾值",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cg_node",
+          "data": "proc_guard",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "受护任务",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cg_edge",
+          "data": "lnk_agent_guard",
+          "type": "LINK",
+          "shape": "edge-agent",
+          "source": {
+            "cell": "cg_shield",
+            "port": ""
+          },
+          "target": {
+            "cell": "cg_node",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_guard": [
+        {
+          "id": "cg_cmp",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "空比较",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_slow": [
+        {
+          "id": "cw_cmp",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "空比较",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_self": [
+        {
+          "id": "cs_self",
+          "data": "proc_self",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "自调用算子",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cs_loop",
+          "data": "lnk_self_loop",
+          "type": "LINK",
+          "shape": "edge-invocation-self",
+          "source": {
+            "cell": "cs_self",
+            "port": ""
+          },
+          "target": {
+            "cell": "cs_self",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_da": [
+        {
+          "id": "ca_mutex",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "分支采样点",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true"
+        },
+        {
+          "id": "ca_fail",
+          "data": "proc_failchild",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "必败算子",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_handler",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "失败处理点",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_mode",
+          "data": "attr_mode",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "收口状态成员",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_st_a",
+          "data": "st_a",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "完成",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_st_b",
+          "data": "st_b",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "降级",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_st_fault",
+          "data": "st_fault",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "故障",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_e1",
+          "data": "lnk_inv_da",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "source": {
+            "cell": "ca_mutex",
+            "port": ""
+          },
+          "target": {
+            "cell": "ca_fail",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_e2",
+          "data": "lnk_psf",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "source": {
+            "cell": "ca_fail",
+            "port": ""
+          },
+          "target": {
+            "cell": "ca_handler",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0,
+          "event": "psf"
+        },
+        {
+          "id": "ca_e3",
+          "data": "lnk_out_a",
+          "type": "LINK",
+          "shape": "edge-out-change",
+          "source": {
+            "cell": "ca_mutex",
+            "port": ""
+          },
+          "target": {
+            "cell": "ca_st_a",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_e4",
+          "data": "lnk_out_b",
+          "type": "LINK",
+          "shape": "edge-out-change",
+          "source": {
+            "cell": "ca_mutex",
+            "port": ""
+          },
+          "target": {
+            "cell": "ca_st_b",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "ca_e5",
+          "data": "lnk_out_fault",
+          "type": "LINK",
+          "shape": "edge-out-change",
+          "source": {
+            "cell": "ca_handler",
+            "port": ""
+          },
+          "target": {
+            "cell": "ca_st_fault",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_db": [
+        {
+          "id": "cb_entry",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "入口",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true"
+        },
+        {
+          "id": "cb_guard",
+          "data": "proc_guard",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "受护任务",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cb_flip",
+          "data": "proc_flip",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "降级赋值",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cb_shield",
+          "data": "attr_shield",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "护盾值",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cb_e0",
+          "data": "lnk_inv_db",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "source": {
+            "cell": "cb_entry",
+            "port": ""
+          },
+          "target": {
+            "cell": "cb_guard",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cb_e0b",
+          "data": "lnk_inv_db",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "source": {
+            "cell": "cb_entry",
+            "port": ""
+          },
+          "target": {
+            "cell": "cb_flip",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cb_e2",
+          "data": "lnk_fixed_shield",
+          "type": "LINK",
+          "shape": "edge-fixed",
+          "source": {
+            "cell": "cb_shield",
+            "port": ""
+          },
+          "target": {
+            "cell": "cb_flip",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_dc": [
+        {
+          "id": "cc_quick",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "快速点",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true",
+          "lastEnd": "true"
+        },
+        {
+          "id": "cc_slow",
+          "data": "proc_slow",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "慢速巡检",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cc_mode",
+          "data": "attr_mode",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "收口状态成员",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cc_st_cancel",
+          "data": "st_cancel",
+          "type": "STATE",
+          "shape": "node-state",
+          "label": "取消",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cc_e1",
+          "data": "lnk_inv_dc",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "source": {
+            "cell": "cc_quick",
+            "port": ""
+          },
+          "target": {
+            "cell": "cc_slow",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cc_e2",
+          "data": "lnk_out_cancel",
+          "type": "LINK",
+          "shape": "edge-out-change",
+          "source": {
+            "cell": "cc_slow",
+            "port": ""
+          },
+          "target": {
+            "cell": "cc_st_cancel",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_sc_c1": [
+        {
+          "id": "cd_a",
+          "data": "proc_driver_a",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "采样与失败流",
+          "x": 0,
+          "y": 0,
+          "defaultStart": "true"
+        },
+        {
+          "id": "cd_b",
+          "data": "proc_driver_b",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "维持中断流",
+          "x": 0,
+          "y": 0,
+          "defaultStart": "true"
+        },
+        {
+          "id": "cd_c",
+          "data": "proc_driver_c",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "结束点级联流",
+          "x": 0,
+          "y": 0,
+          "defaultStart": "true"
+        }
+      ],
+      "defineView_mutex": [],
+      "designView_mutex": [],
+      "defineView_handler": [],
+      "designView_handler": [],
+      "defineView_flip": [],
+      "designView_flip": [],
+      "defineView_quick": [],
+      "designView_quick": [],
+      "defineView_cmp": [],
+      "designView_cmp": [],
+      "defineView_slow": [],
+      "defineView_dc": [],
+      "defineView_db": [],
+      "defineView_da": [],
+      "defineView_self": [],
+      "defineView_sc_c1": [],
+      "designView_enum_md": []
+    }
+  }
+}

@@ -8,7 +8,7 @@
 | `VAL-004` | ERROR | 标准 9.4.7 | 含子过程设计视图的复合过程必须至少声明一个 `firstStart=true` 入口子过程 | `ValidationRulesAndMappingTest` |
 | `VAL-005` | ERROR | 平台扩展 R06 | 结构控制关系（`edge-control`）必须构成有向无环图（DAG） | `ValidationRulesAndMappingTest` |
 | `VAL-006` | ERROR | 标准 7.3 | 定值（Constant）严禁连接消耗、生成、状态转换或单/双向输出影响连线 | `ValidationRulesVal006to010Test` |
-| `VAL-007` | ERROR | 标准 8.2 | 标识符编码若由用户显式填写，不得违反 `^[A-Za-z_][A-Za-z0-9_]*$` 或命中 Java 21 保留字（实现于 `UniqueIdentifierGuard`，`StaticModelValidator` 接线） | `ValidationRulesVal006to010Test` |
-| `VAL-008` | ERROR | 标准 10.4 | 同组互斥分支概率之和必须落在 [0.9999, 1.0001] 闭区间内（单成员命名组降级 WARNING） | `ValidationRulesVal006to010Test` |
+| `VAL-007` | ERROR | 标准 8.2 | 标识符编码若由用户显式填写，不得违反 `^[A-Za-z_][A-Za-z0-9_]*$` 或命中 Java 21 保留字（实现于 `UniqueIdentifierGuard`，`StaticModelValidator` 接线；2026-11-28 补扫：实体显式 `encode` 字段（TypeDefIR/MemberIR/ProcessDefIR 携带）同口径校验，存量语料自动码（dxlx1/gccy1 等合法形态）零误杀 | `ValidationRulesVal006to010Test` |
+| `VAL-008` | ERROR | 标准 10.4 | 同组互斥分支概率之和必须落在 [0.9999, 1.0001] 闭区间内（单成员命名组降级 WARNING）。分支三来源：字段事件触发绑定、过程后置动作、**复合过程内子过程调用分支（`CompilePlanIR.NextIR`，2026-11-28 补扫，组名作用域 = 拆分点节点，与出码侧 CDF 消费口径一致）** | `ValidationRulesVal006to010Test` |
 | `VAL-009` | WARNING | 标准 10.1.3 | 同一对象与同一过程之间同向同类型关系最多允许存在一条（`edge-fixed` 除外）；重复线由解析器按 NextIR 去重、语义无损（2026-11-27 模型 2 真机实证降级，原 ERROR 阻断属过度拦截） | `ValidationRulesAndMappingTest` |
 | `VAL-010` | ERROR | 标准 9.6 | 成员链与引用定位路径深度不得超过最大递归上限 64 层 | `ValidationRulesVal006to010Test` |

@@ -58,7 +58,8 @@ class PortSessionFlowIntegrationTest {
 
             // 1. 构建 → 热挂载
             var report = pipeline.buildFromCorpus(corpus.resolve("data-a.json"), corpus.resolve("data-b.json"));
-            Assertions.assertEquals("emergency-deduction", report.modelCode());
+            Assertions.assertTrue(report.modelCode().startsWith("emergency-deduction-"),
+                    "模型编码应带语料摘要短哈希后缀: " + report.modelCode());
             Assertions.assertTrue(report.javacParity(), "javac 对拍应一致: " + report.javacNote());
 
             // 2. 端口建会话（热挂载模型解析）

@@ -184,6 +184,10 @@ public final class ProcessTaskEmitter {
             if (maintain != null) {
                 tb.addMethod(maintain);
             }
+            MethodSpec leafControlBits = emitProcessEnableBits(model, proc);
+            if (leafControlBits != null) {
+                tb.addMethod(leafControlBits);
+            }
             JavaFile bo = emitRuntimeBo(model, proc);
             JavaFile task = JavaFile.builder(proc.taskCn().packageName(), addCommonTail(model, proc, tb, scope, false).build())
                     .indent("    ").build();
@@ -193,6 +197,10 @@ public final class ProcessTaskEmitter {
         MethodSpec maintain = emitCheckMaintain(model, proc);
         if (maintain != null) {
             tb.addMethod(maintain);
+        }
+        MethodSpec controlBits = emitProcessEnableBits(model, proc);
+        if (controlBits != null) {
+            tb.addMethod(controlBits);
         }
         MethodSpec failed = emitNodeFailed(model, proc, scope);
         if (failed != null) {
@@ -216,6 +224,30 @@ public final class ProcessTaskEmitter {
         return sb.toString();
     }
 
+    /**
+     * R06 结构控制（收割）：宿主类型上指向本过程的控制规则位按位或为关注位集合；
+     * 无控制规则时不覆写（基类返回 0 = 无约束，runProcess 门点零开销）。
+     */
+    private MethodSpec emitProcessEnableBits(PlanModel model, ProcInfo proc) {
+        if (proc.owner() == null || proc.owner().controls() == null) {
+            return null;
+        }
+        long bits = 0L;
+        for (CompilePlanIR.ControlRuleIR rule : proc.owner().controls()) {
+            if ("PROCESS".equals(rule.targetKind()) && rule.targetEntityId().equals(proc.def().entityId())) {
+                bits |= 1L << rule.bitIndex();
+            }
+        }
+        if (bits == 0L) {
+            return null;
+        }
+        return MethodSpec.methodBuilder("processEnableBits").addAnnotation(Override.class)
+                .addModifiers(Modifier.PROTECTED).returns(long.class)
+                .addJavadoc("R06 控制规则位（宿主类型 $L）\n", proc.owner().zhName())
+                .addStatement("return $L", "0x" + Long.toHexString(bits) + "L")
+                .build();
+    }
+
     /** 启动条件与非空输入守卫（收割：R22 启动条件 / R13/R15 源状态前置 / R21 初始维持条件接入 canStart） */
     private MethodSpec emitCanStart(PlanModel model, ProcInfo proc) {
         MethodSpec.Builder mb = MethodSpec.methodBuilder("canStart").addAnnotation(Override.class)
@@ -227,46 +259,30 @@ public final class ProcessTaskEmitter {
                 any = true;
             }
         }
-        // 画布启动/维持/源状态前置条件：状态前置走 enumZhLabel 中文比对（与事件接线表同一语义），
-        // 数值/布尔比较内联字面量；复合逻辑表达式暂不支持内联，记注释降级（不误杀启动）。
+        // 画布启动/维持/源状态前置条件：状态前置走 enumZhLabel 中文比对（与事件接线表同一语义）；
+        // 条件组与组合表达式经 conditionJudgeCode 完整编译（G6 收割：复合表达式 1&&(2||3) 此前降注释失效）
         List<CompilePlanIR.ConditionRuleIR> starts = proc.def().startConditions();
         if (starts != null && !starts.isEmpty()) {
             TaskScope condScope = new TaskScope(model, proc);
             for (CompilePlanIR.ConditionRuleIR rule : starts) {
-                OperandRenderer.Value value;
-                try {
-                    value = condScope.render(rule.operand());
-                } catch (RuntimeException ex) {
-                    mb.addStatement("// 启动条件[$L]的操作数无法解析，已跳过: $L", rule.describe(),
-                            oneLineText(String.valueOf(ex.getMessage())));
+                OperandRenderer.Value value = tryRenderConditionOperand(model, proc, condScope, rule, mb, "启动条件");
+                if (value == null) {
                     continue;
                 }
-                boolean generated = false;
                 if (rule.stateLabel() != null && !rule.stateLabel().isBlank()) {
                     mb.beginControlFlow("if (!\"$L\".equals($T.enumZhLabel((Enum<?>) ($L))))",
                             rule.stateLabel(), PlanModel.BASE_ENTITY, value.code());
                     mb.addStatement("return false");
                     mb.endControlFlow();
-                    generated = true;
                 }
-                for (CompilePlanIR.ConditionIR c : rule.conditions() == null ? java.util.List.<CompilePlanIR.ConditionIR>of() : rule.conditions()) {
-                    String op = switch (c.op() == null ? "" : c.op()) {
-                        case "=" -> "==";
-                        default -> c.op();
-                    };
-                    String literal = switch (c.literalType() == null ? "number" : c.literalType()) {
-                        case "string" -> "\"" + c.literal() + "\"";
-                        case "null" -> "null";
-                        default -> c.literal();
-                    };
-                    mb.beginControlFlow("if (!($L " + op + " " + literal + "))", value.code());
+                CodeBlock judge = conditionJudgeCode(model, rule.conditions(), rule.expression(), value, "启动条件");
+                if (judge != null) {
+                    mb.beginControlFlow("if (!($L))", judge);
                     mb.addStatement("return false");
                     mb.endControlFlow();
-                    generated = true;
-                }
-                if (!generated && rule.expression() != null && !rule.expression().isBlank()) {
-                    mb.addStatement("// 复合启动条件[$L]待表达式求值器接入: $L", rule.describe(),
-                            String.valueOf(rule.expression()));
+                } else if (rule.conditions() != null && !rule.conditions().isEmpty()) {
+                    mb.addStatement("// 启动条件[$L]含不支持的记号，为避免语义错误不再按 AND 直译: $L",
+                            rule.describe(), String.valueOf(rule.expression()));
                 }
             }
         }
@@ -288,48 +304,26 @@ public final class ProcessTaskEmitter {
         TaskScope condScope = new TaskScope(model, proc);
         boolean any = false;
         for (CompilePlanIR.ConditionRuleIR rule : maintains) {
-            OperandRenderer.Value value;
-            try {
-                value = condScope.render(rule.operand());
-            } catch (RuntimeException ex) {
-                model.diagnostic("过程 " + proc.zhName() + " 维持条件[" + rule.describe() + "]的操作数无法解析，已降级注释: "
-                        + ex.getMessage());
-                mb.addStatement("// 维持条件[$L]的操作数无法解析，已跳过: $L", rule.describe(),
-                        oneLineText(String.valueOf(ex.getMessage())));
+            OperandRenderer.Value value = tryRenderConditionOperand(model, proc, condScope, rule, mb, "维持条件");
+            if (value == null) {
                 continue;
             }
+            // 状态前置 + 条件组/复合表达式（G6 收割：与 canStart 同一编译路径，修复原实现里
+            // judges.isEmpty 双重判断导致降级注释不可达的死代码）
             List<CodeBlock> judges = new ArrayList<>();
             if (rule.stateLabel() != null && !rule.stateLabel().isBlank()) {
                 judges.add(CodeBlock.of("\"$L\".equals($T.enumZhLabel((Enum<?>) ($L)))",
                         rule.stateLabel(), PlanModel.BASE_ENTITY, value.code()));
             }
-            for (CompilePlanIR.ConditionIR c : rule.conditions() == null ? java.util.List.<CompilePlanIR.ConditionIR>of()
-                    : rule.conditions()) {
-                // 只内联可安全拼接的比较符（逐拍执行路径）；其余（非 ASCII / 未知）降级注释，不产非法 Java
-                String op = switch (c.op() == null ? "" : c.op()) {
-                    case "=" -> "==";
-                    case "!=", "<", "<=", ">", ">=" -> c.op();
-                    default -> null;
-                };
-                if (op == null) {
-                    model.diagnostic("过程 " + proc.zhName() + " 维持条件[" + rule.describe() + "]的比较符 "
-                            + c.op() + " 不支持内联，已降级注释");
-                    judges.clear();
-                    break;
-                }
-                String literal = switch (c.literalType() == null ? "number" : c.literalType()) {
-                    case "string" -> "\"" + c.literal() + "\"";
-                    case "null" -> "null";
-                    default -> c.literal();
-                };
-                judges.add(CodeBlock.of("($L " + op + " " + literal + ")", value.code()));
-            }
-            if (judges.isEmpty()) {
+            CodeBlock conditionJudge = conditionJudgeCode(model, rule.conditions(), rule.expression(), value, "维持条件");
+            if (conditionJudge != null) {
+                judges.add(conditionJudge);
+            } else if (rule.conditions() != null && !rule.conditions().isEmpty()) {
+                model.diagnostic("过程 " + proc.zhName() + " 维持条件[" + rule.describe()
+                        + "]的表达式含不支持的记号，该规则不参与逐拍校验");
                 continue;
             }
             if (judges.isEmpty()) {
-                mb.addStatement("// 复合维持条件[$L]待表达式求值器接入: $L", rule.describe(),
-                        String.valueOf(rule.expression()));
                 continue;
             }
             CodeBlock.Builder judge = CodeBlock.builder().add(judges.get(0));
@@ -683,6 +677,34 @@ cb.add("default -> { }\n");
     }
 
     /** 任意文本单行化 + $ 转义（进生成代码注释的安全形态） */
+    /**
+     * 条件操作数渲染（canStart / checkMaintain 共用）：渲染失败或渲染为字面 null
+     * （OperandRenderer 对静态不可解析成员路径"按空值处理"——对数据流合理，对守卫无效）
+     * 一律降级为注释跳过，绝不把 null 拼进比较表达式（合成模型 RM-C1 实证：null < 50 编译失败）。
+     */
+    private OperandRenderer.Value tryRenderConditionOperand(PlanModel model, ProcInfo proc,
+                                                            TaskScope condScope, CompilePlanIR.ConditionRuleIR rule,
+                                                            MethodSpec.Builder mb, String kind) {
+        OperandRenderer.Value value;
+        try {
+            value = condScope.render(rule.operand());
+        } catch (RuntimeException ex) {
+            model.diagnostic("过程 " + proc.zhName() + " " + kind + "[" + rule.describe() + "]的操作数无法解析，已降级注释: "
+                    + ex.getMessage());
+            mb.addStatement("// " + kind + "[$L]的操作数无法解析，已跳过: $L", rule.describe(),
+                    oneLineText(String.valueOf(ex.getMessage())));
+            return null;
+        }
+        if (value != null && "null".equals(value.code().toString())) {
+            model.diagnostic("过程 " + proc.zhName() + " " + kind + "[" + rule.describe() + "]的操作数静态不可解析"
+                    + "（按空值处理路径），守卫降级注释");
+            mb.addStatement("// " + kind + "[$L]的操作数静态不可解析（成员路径按空值处理），守卫降级: $L",
+                    rule.describe(), oneLineText(String.valueOf(rule.operand().javaType())));
+            return null;
+        }
+        return value;
+    }
+
     private static String oneLineText(String text) {
         return (text == null ? "" : text.replaceAll("\\s*\\r?\\n\\s*", " ")).replace("$", "＄");
     }
@@ -712,29 +734,45 @@ cb.add("default -> { }\n");
 
     /** 画布线上判断（logic.conditions + expression）→ 布尔表达式 */
     static CodeBlock judgeCode(PlanModel model, NextIR next, Value value) {
-        List<CompilePlanIR.ConditionIR> conditions = next.conditions();
-        if (conditions == null || conditions.isEmpty()) {
+        if (next.conditions() == null || next.conditions().isEmpty()) {
             return CodeBlock.of("true");
         }
-        String expression = next.expression() == null ? "" : next.expression().trim();
-        if (expression.isEmpty() || expression.matches("\\d+")) {
-            int index = expression.isEmpty() ? 1 : Integer.parseInt(expression);
+        CodeBlock judge = conditionJudgeCode(model, next.conditions(), next.expression(), value, "线上判断");
+        return judge == null ? allJudges(model, next.conditions(), value) : judge;
+    }
+
+    /**
+     * 条件组 + 组合表达式 → 布尔表达式（收割 G6：启动/维持条件此前不支持复合表达式，一律降注释失效；
+     * 现与线上判断同一词法白名单 [0-9 ()&|!] 完整编译。表达式为空 = 条件全部 AND；
+     * 纯数字 = 仅取该序号条件；含不支持的记号时返回 null 由调用方降级（绝不拼出语义错误的 AND）。
+     */
+    static CodeBlock conditionJudgeCode(PlanModel model, List<CompilePlanIR.ConditionIR> conditions,
+                                        String expression, Value value, String sceneLabel) {
+        if (conditions == null || conditions.isEmpty()) {
+            return null;
+        }
+        String expr = expression == null ? "" : expression.trim();
+        if (expr.isEmpty()) {
+            return allJudges(model, conditions, value);
+        }
+        if (expr.matches("\\d+")) {
+            int index = Integer.parseInt(expr);
             CompilePlanIR.ConditionIR condition = conditionAt(conditions, index);
             return singleJudge(model, value, condition, condition);
         }
-        if (!expression.matches("[\\d\\s&|!()]+")) {
-            model.diagnostic("线上判断表达式 " + expression + " 含不支持的记号，按条件全部满足处理");
-            return allJudges(model, next, value);
+        if (!expr.matches("[\\d\\s&|!()]+")) {
+            model.diagnostic(sceneLabel + "表达式 " + expr + " 含不支持的记号，无法编译");
+            return null;
         }
         CodeBlock.Builder composed = CodeBlock.builder();
-        for (int i = 0; i < expression.length(); i++) {
-            char c = expression.charAt(i);
+        for (int i = 0; i < expr.length(); i++) {
+            char c = expr.charAt(i);
             if (Character.isDigit(c)) {
                 int j = i;
-                while (j < expression.length() && Character.isDigit(expression.charAt(j))) {
+                while (j < expr.length() && Character.isDigit(expr.charAt(j))) {
                     j++;
                 }
-                int index = Integer.parseInt(expression.substring(i, j));
+                int index = Integer.parseInt(expr.substring(i, j));
                 CompilePlanIR.ConditionIR condition = conditionAt(conditions, index);
                 composed.add(singleJudge(model, value, condition, null));
                 i = j - 1;
@@ -745,10 +783,10 @@ cb.add("default -> { }\n");
         return composed.build();
     }
 
-    private static CodeBlock allJudges(PlanModel model, NextIR next, Value value) {
+    private static CodeBlock allJudges(PlanModel model, List<CompilePlanIR.ConditionIR> conditions, Value value) {
         CodeBlock.Builder composed = CodeBlock.builder();
         boolean first = true;
-        for (CompilePlanIR.ConditionIR condition : next.conditions()) {
+        for (CompilePlanIR.ConditionIR condition : conditions) {
             if (!first) {
                 composed.add(" && ");
             }
@@ -784,8 +822,53 @@ cb.add("default -> { }\n");
     /** 后置动作：out-change 状态转换（R14）、result 生成（R12）、consumption 消耗（R11） */
     static void emitPostActions(PlanModel model, ProcInfo proc, OperandRenderer scope,
                                 List<PostIR> postActions, CodeBlock.Builder cb) {
+        // 互斥概率组（标准 10.4，合成模型 RM-C1 实证缺口）：共享 probabilityGroup 的 OUT_CHANGE 分支
+        // 按 CDF 互斥采样（ctx.randomStream 任务级确定性随机流，存档游标跟踪），绝不顺序直译
+        java.util.Set<PostIR> grouped = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Map<String, List<PostIR>> mutexGroups = new java.util.LinkedHashMap<>();
         for (PostIR post : postActions) {
-            if (post.target() == null) {
+            if ("OUT_CHANGE".equals(post.kind()) && post.target() != null
+                    && post.probabilityGroup() != null && !post.probabilityGroup().isBlank()
+                    && post.probability() > 0.0D) {
+                mutexGroups.computeIfAbsent(post.probabilityGroup(), k -> new ArrayList<>()).add(post);
+                grouped.add(post);
+            }
+        }
+        for (Map.Entry<String, List<PostIR>> entry : mutexGroups.entrySet()) {
+            if (entry.getValue().size() < 2) {
+                grouped.removeAll(entry.getValue()); // 单成员组按独立概率处理
+                continue;
+            }
+            double sum = 0.0D;
+            for (PostIR post : entry.getValue()) {
+                sum += post.probability();
+            }
+            String tag = entry.getKey().replaceAll("[^A-Za-z0-9]", "_");
+            cb.add("// 概率组 $L（$L 个互斥分支，概率和 $L，CDF 采样）\n", entry.getKey(),
+                    entry.getValue().size(), String.valueOf(sum));
+            cb.addStatement("double groupR$L = ctx.randomStream().nextDouble()", tag);
+            double acc = 0.0D;
+            for (int i = 0; i < entry.getValue().size(); i++) {
+                PostIR post = entry.getValue().get(i);
+                acc += sum > 0.0D ? post.probability() / sum : 1.0D / entry.getValue().size();
+                if (i == entry.getValue().size() - 1) {
+                    emitOneOutChange(model, proc, scope, post, cb);
+                } else {
+                    // palantir javapoet 0.5.0：else-if 链必须 nextControlFlow（endControlFlow("else")
+                    // 生成 `} else;`，互斥采样静默失效——实测踩雷）
+                    cb.beginControlFlow("if (groupR$L < $L)", tag, String.valueOf(acc));
+                    emitOneOutChange(model, proc, scope, post, cb);
+                    cb.nextControlFlow("else");
+                    if (i == entry.getValue().size() - 2) {
+                        emitOneOutChange(model, proc, scope, entry.getValue().get(i + 1), cb);
+                        cb.endControlFlow();
+                        break;
+                    }
+                }
+            }
+        }
+        for (PostIR post : postActions) {
+            if (grouped.contains(post) || post.target() == null) {
                 continue;
             }
             if ("OUT_CHANGE".equals(post.kind())) {
@@ -795,10 +878,17 @@ cb.add("default -> { }\n");
                     model.diagnostic((proc == null ? "" : proc.zhName() + "：") + "输出转换的目标状态 " + post.stateLabel() + " 不在枚举里，已跳过");
                     continue;
                 }
-                cb.add("// 输出转换：$L → $L\n", scope.describeZh(post.target()), post.stateLabel());
-                cb.addStatement("$L", scope.assign(post.target(), new Value(CodeBlock.of("$T.$L", info.cn(), constant),
-                        info.cn(), PlanModel.KIND_ENUM,
-                        com.groma.studio.ir.GromaTypes.enumType(post.enumTypeId()))));
+                // 独立概率分支：probability < 1 包伯努利门控（任务级确定性随机流）
+                if (post.probability() > 0.0D && post.probability() < 1.0D) {
+                    cb.beginControlFlow("if (ctx.randomStream().nextDouble() < $L)", String.valueOf(post.probability()));
+                    cb.add("// 输出转换（独立概率 $L）：$L → $L\n", String.valueOf(post.probability()),
+                            scope.describeZh(post.target()), post.stateLabel());
+                    cb.addStatement("$L", scope.assign(post.target(), enumValue(info, constant)));
+                    cb.endControlFlow();
+                } else {
+                    cb.add("// 输出转换：$L → $L\n", scope.describeZh(post.target()), post.stateLabel());
+                    cb.addStatement("$L", scope.assign(post.target(), enumValue(info, constant)));
+                }
             } else if ("RESULT".equals(post.kind())) {
                 emitResult(model, proc, scope, post, cb);
             } else if ("WRITE_BACK".equals(post.kind())) {
@@ -813,6 +903,25 @@ cb.add("default -> { }\n");
                 cb.addStatement("(($T) $L).markConsumed($L)", PlanModel.BASE_ENTITY, target.owner().code(), scope.ctxRef());
             }
         }
+    }
+
+    /** 单条 OUT_CHANGE 写出（互斥组分支内复用） */
+    private static void emitOneOutChange(PlanModel model, ProcInfo proc, OperandRenderer scope, PostIR post,
+                                         CodeBlock.Builder cb) {
+        EnumInfo info = model.enums.get(post.enumTypeId());
+        String constant = info == null ? null : info.constantOf(post.stateLabel());
+        if (constant == null) {
+            model.diagnostic((proc == null ? "" : proc.zhName() + "：") + "输出转换的目标状态 " + post.stateLabel() + " 不在枚举里，已跳过");
+            return;
+        }
+        cb.add("// 输出转换：$L → $L\n", scope.describeZh(post.target()), post.stateLabel());
+        cb.addStatement("$L", scope.assign(post.target(), enumValue(info, constant)));
+    }
+
+    private static Value enumValue(EnumInfo info, String constant) {
+        return new Value(CodeBlock.of("$T.$L", info.cn(), constant),
+                info.cn(), PlanModel.KIND_ENUM,
+                com.groma.studio.ir.GromaTypes.enumType(info.enumId()));
     }
 
     /** 输出影响 / 双向影响回写：过程成功后把输出形参的终值写回调用点上绑定的成员 */

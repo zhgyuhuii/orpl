@@ -34,6 +34,10 @@ import java.util.List;
  * <li>代表底高程（representativeFloorElevation，BASE，单位 m）</li>
  * <li>积水状态（waterloggingState，ENUM）</li>
  * </ul>
+ * 画布建模备注（R27）：
+ * <ul>
+ * <li>备注1</li>
+ * </ul>
  */
 @Schema(
         title = "地铁区间",

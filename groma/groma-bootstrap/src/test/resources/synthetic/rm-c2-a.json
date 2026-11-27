@@ -1,0 +1,123 @@
+{
+  "success": true,
+  "obj": {
+    "id": "RM_C2_SELF_RECURSION",
+    "label": "自调用验收基准模型",
+    "version": 1,
+    "nodes": [
+      {
+        "id": "folder_scenes_c2",
+        "type": "SCENES",
+        "label": "运行场景",
+        "nodes": [
+          {
+            "id": "node_sc_c2",
+            "entityId": "sc_c2",
+            "type": "SCENE",
+            "label": "自调用验收场景",
+            "defineViewId": "defineView_sc_c2",
+            "designViewId": "designView_sc_c2",
+            "nodes": [
+              {
+                "id": "n_q1",
+                "entityId": "proc_recur",
+                "type": "PROCESS",
+                "label": "自递归算子"
+              },
+              {
+                "id": "n_q2",
+                "entityId": "proc_cmp2",
+                "type": "PROCESS",
+                "label": "空比较"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "entities": [
+      {
+        "id": "sc_c2",
+        "type": "SCENE",
+        "label": "自调用验收场景",
+        "defineViewId": "defineView_sc_c2",
+        "designViewId": "designView_sc_c2"
+      },
+      {
+        "id": "proc_recur",
+        "type": "PROCESS",
+        "label": "自递归算子",
+        "timeRelated": "UNRELATED",
+        "typeEntityId": "sc_c2",
+        "defineViewId": "defineView_recur",
+        "designViewId": "designView_recur"
+      },
+      {
+        "id": "proc_cmp2",
+        "type": "PROCESS",
+        "label": "空比较",
+        "timeRelated": "UNRELATED",
+        "innerClass": "compare",
+        "innerType": "eq",
+        "typeEntityId": "sc_c2",
+        "defineViewId": "defineView_cmp2",
+        "designViewId": "designView_cmp2"
+      },
+      {
+        "id": "lnk_self_loop2",
+        "type": "LINK",
+        "linkType": "invocation-self"
+      },
+      {
+        "id": "lnk_inv2",
+        "type": "LINK",
+        "linkType": "invocation"
+      }
+    ],
+    "cellMap": {
+      "designView_recur": [
+        {
+          "id": "cr_self",
+          "data": "proc_recur",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "自递归算子",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cr_loop",
+          "data": "lnk_self_loop2",
+          "type": "LINK",
+          "shape": "edge-invocation-self",
+          "source": {
+            "cell": "cr_self",
+            "port": ""
+          },
+          "target": {
+            "cell": "cr_self",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_sc_c2": [
+        {
+          "id": "cd_recur",
+          "data": "proc_recur",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "自递归算子",
+          "defaultStart": "true",
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "defineView_sc_c2": [],
+      "defineView_recur": [],
+      "defineView_cmp2": [],
+      "designView_cmp2": []
+    }
+  }
+}

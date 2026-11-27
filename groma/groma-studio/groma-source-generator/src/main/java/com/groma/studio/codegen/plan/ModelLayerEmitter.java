@@ -19,7 +19,9 @@ import com.palantir.javapoet.TypeSpec;
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -116,6 +118,18 @@ public final class ModelLayerEmitter {
                     nvl(member.unit()));
             firstMeta = false;
         }
+        // R01 副父类成员也进元数据表（setInstanceValue / 快照导出按成员标识寻址走这张表）
+        Map<String, String> mixinRoutes = mixinTokenRoutes(model, type);
+        for (Map.Entry<String, String> route : mixinRoutes.entrySet()) {
+            MemberInfo mixinOwned = mixinMember(model, type, route.getKey());
+            if (mixinOwned == null) {
+                continue;
+            }
+            metas.add(firstMeta ? "" : ", ").add("new $T($S, $S, $S, $S, $S, $S)", PlanModel.MEMBER_META,
+                    mixinOwned.tokenId(), mixinOwned.zhName(), mixinOwned.field(), mixinOwned.kind(),
+                    mixinOwned.type().toString(), nvl(mixinOwned.unit()));
+            firstMeta = false;
+        }
         metas.add(")");
         tb.addField(FieldSpec.builder(PlanModel.listOf(PlanModel.MEMBER_META), "MEMBERS",
                 Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).initializer(metas.build()).build());
@@ -133,7 +147,13 @@ public final class ModelLayerEmitter {
 
         tb.addMethod(MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC)
                 .addJavadoc("@param instanceId 实例标识（命名实例取画布对象实体 id，运行期生成的对象由世界上下文分配）\n")
-                .addParameter(String.class, "instanceId").addStatement("super(instanceId)").build());
+                .addParameter(String.class, "instanceId")
+                .addStatement("super(instanceId)")
+                .addCode(ctorTail(model, type))
+                .build());
+
+        // R06 结构控制（收割）：类型带控制规则时生成 refreshControlMask 覆写（门点求值见基类/任务基类）
+        emitRefreshControlMask(model, type, tb);
 
         tb.addMethod(MethodSpec.methodBuilder("getTypeCode").addAnnotation(Override.class).addModifiers(Modifier.PUBLIC)
                 .returns(String.class).addStatement("return $S", type.code()).build());
@@ -145,9 +165,108 @@ public final class ModelLayerEmitter {
         for (MemberInfo member : type.ownMembers()) {
             emitAccessors(tb, type, member);
         }
+        // R01 副父类（mixin）组合委托（收割）：副父类无法多继承，生成委托实例与桥接读写
+        emitMixinDelegation(model, type, tb);
         emitMemberSwitches(tb, type);
         emitCopy(tb, type);
         return JavaFile.builder(cn.packageName(), tb.build()).indent("    ").build();
+    }
+
+    /** 委托字段名（R01 副父类组合委托） */
+    private static String mixinFieldName(TypeInfo mixin) {
+        return "mixin" + mixin.code() + "Entity";
+    }
+
+    /**
+     * 构造器尾部（R01 副父类委托实例初始化）：委托实体复用宿主实例标识，
+     * 使其成员事件在链路上与宿主同源（实例标识一致，快照/WS 按 id 寻址不分裂）。
+     */
+    private CodeBlock ctorTail(PlanModel model, TypeInfo type) {
+        CodeBlock.Builder cb = CodeBlock.builder();
+        for (String mixinId : type.mixinIds()) {
+            TypeInfo mixin = model.types.get(mixinId);
+            if (mixin == null) {
+                continue;
+            }
+            cb.addStatement("this.$L = new $T(instanceId)", mixinFieldName(mixin), mixin.entity());
+        }
+        return cb.build();
+    }
+
+    /**
+     * R01 副父类组合委托（收割自 code3.html G1 方案，按真实生成器结构落地）：
+     * ReadOnly 接口多继承补齐契约；实体生成副父类实例（含其主继承链），
+     * 副父类子树中与主继承链不重叠的成员生成委托 Getter/Setter 桥接——
+     * Getter 直转副父类实例，Setter 经副父类带 ctx 写入（事件源实例标识与宿主一致）。
+     */
+    private void emitMixinDelegation(PlanModel model, TypeInfo type, TypeSpec.Builder tb) {
+        if (type.mixinIds().isEmpty()) {
+            return;
+        }
+        java.util.Set<String> primaryTokens = new java.util.HashSet<>();
+        for (MemberInfo member : type.allMembers()) {
+            primaryTokens.add(member.tokenId());
+        }
+        for (String mixinId : type.mixinIds()) {
+            TypeInfo mixin = model.types.get(mixinId);
+            if (mixin == null) {
+                continue;
+            }
+            tb.addSuperinterface(mixin.readOnly());
+            tb.addField(FieldSpec.builder(mixin.entity(), mixinFieldName(mixin), Modifier.PRIVATE)
+                    .addJavadoc("R01 副父类【$L】组合委托实例（复用宿主实例标识）\n", mixin.zhName())
+                    .build());
+            for (MemberInfo member : mixin.allMembers()) {
+                if (primaryTokens.contains(member.tokenId())) {
+                    continue; // 主继承链同名成员优先，避免桥接重复
+                }
+                primaryTokens.add(member.tokenId());
+                tb.addMethod(MethodSpec.methodBuilder(member.getter()).addAnnotation(Override.class)
+                        .addModifiers(Modifier.PUBLIC).returns(member.type())
+                        .addJavadoc("R01 副父类成员：$L（委托至 $L）\n", member.zhName(), mixin.zhName())
+                        .addStatement("return this.$L.$L()", mixinFieldName(mixin), member.getter())
+                        .build());
+                tb.addMethod(MethodSpec.methodBuilder(member.setterCtx()).addModifiers(Modifier.PUBLIC)
+                        .addJavadoc("R01 副父类成员写入：$L（委托至 $L，事件经其带 ctx 写入发出）\n",
+                                member.zhName(), mixin.zhName())
+                        .addParameter(member.type(), "value").addParameter(PlanModel.WORLD_CTX, "ctx")
+                        .addStatement("this.$L.$L(value, ctx)", mixinFieldName(mixin), member.setterCtx())
+                        .build());
+            }
+        }
+    }
+
+    /**
+     * R06 结构控制（收割自 code3.html G2 方案，按门点求值落地）：按当前枚举成员状态重算
+     * 成员/过程使能掩码并写回缓存；过程使能位由 GromaProcessTask.runProcess 推进前消费。
+     */
+    private void emitRefreshControlMask(PlanModel model, TypeInfo type, TypeSpec.Builder tb) {
+        if (type.controls().isEmpty()) {
+            return;
+        }
+        MethodSpec.Builder mb = MethodSpec.methodBuilder("refreshControlMask")
+                .addAnnotation(Override.class).addModifiers(Modifier.PROTECTED)
+                .addParameter(PlanModel.WORLD_CTX, "ctx")
+                .addJavadoc("R06 结构控制掩码求值（门点调用：任务推进前 / 受控成员写入前）\n");
+        mb.addStatement("long memberMask = -1L");
+        mb.addStatement("long processMask = -1L");
+        for (CompilePlanIR.ControlRuleIR rule : type.controls()) {
+            MemberInfo source = type.member(rule.sourceEnumMemberId());
+            if (source == null || rule.activeStateLabels().isEmpty()) {
+                continue;
+            }
+            String labels = String.join("、", rule.activeStateLabels());
+            mb.beginControlFlow("if (!(\"$L\".equals($T.enumZhLabel((Enum<?>) (this.$L())))))",
+                    labels, PlanModel.BASE_ENTITY, source.getter());
+            if ("PROCESS".equals(rule.targetKind())) {
+                mb.addStatement("processMask &= ~(1L << $L)", rule.bitIndex());
+            } else {
+                mb.addStatement("memberMask &= ~(1L << $L)", rule.bitIndex());
+            }
+            mb.endControlFlow();
+        }
+        mb.addStatement("applyControlMasks(memberMask, processMask)");
+        tb.addMethod(mb.build());
     }
 
     /** 该类型是否被其他类型继承（主父类指到它）——决定实体字段可见性 */
@@ -177,6 +296,16 @@ public final class ModelLayerEmitter {
             sb.append("事件接线（类型设计视图）：\n<ul>\n");
             for (TriggerIR trigger : triggers) {
                 sb.append("<li>").append(describeTrigger(trigger)).append("</li>\n");
+            }
+            sb.append("</ul>\n");
+        }
+        // G9 收割（code3.html）：R27 备注连线采集的建模备注写入类头 Javadoc
+        // （parser collectNotes 的文档化意图"出码时写入 Javadoc"此前未落地）
+        if (type.notes() != null && !type.notes().isEmpty()) {
+            sb.append("画布建模备注（R27）：\n<ul>\n");
+            for (String note : type.notes()) {
+                sb.append("<li>").append(note.replace("*/", "* /").replace("$", "＄")
+                        .replaceAll("\\s*\\r?\\n\\s*", " ")).append("</li>\n");
             }
             sb.append("</ul>\n");
         }
@@ -271,6 +400,13 @@ public final class ModelLayerEmitter {
                 .filter(px -> px.collectionMemberId().equals(member.tokenId()))
                 .map(CompilePlanIR.ProxyDefIR::proxyEntityId)
                 .toList();
+        // R06 成员控制位：指向本成员的 MEMBER 型控制规则位按位或（>0 时 setterCtx 生成门点守卫）
+        long memberControlBits = 0L;
+        for (CompilePlanIR.ControlRuleIR rule : type.controls()) {
+            if ("MEMBER".equals(rule.targetKind()) && rule.targetEntityId().equals(member.tokenId())) {
+                memberControlBits |= 1L << rule.bitIndex();
+            }
+        }
         boolean bool = member.type() == TypeName.BOOLEAN;
         tb.addMethod(MethodSpec.methodBuilder(member.getter()).addAnnotation(Override.class)
                 .addModifiers(Modifier.PUBLIC).returns(member.type())
@@ -279,6 +415,13 @@ public final class ModelLayerEmitter {
         MethodSpec.Builder setter = MethodSpec.methodBuilder(member.setterCtx()).addModifiers(Modifier.PUBLIC)
                 .addJavadoc("写入$L并发出对应事件（初始化静默期与对象创建期间不发事件）\n", member.zhName())
                 .addParameter(member.type(), "value").addParameter(PlanModel.WORLD_CTX, "ctx");
+        if (memberControlBits != 0L) {
+            // R06 结构控制：成员失能时写入静默忽略（标准 DSM 语义：被切断部件的操作无效）
+            setter.addStatement("refreshControlMask(ctx)");
+            setter.beginControlFlow("if (!memberEnabled($L))", "0x" + Long.toHexString(memberControlBits) + "L");
+            setter.addStatement("return");
+            setter.endControlFlow();
+        }
         if (String.class.getName().equals(member.type().toString())) {
             setter.beginControlFlow("if (java.util.Objects.equals(this.$L, value))", member.field());
         } else {
@@ -313,13 +456,44 @@ public final class ModelLayerEmitter {
         }
     }
 
+    /** R01 副父类成员 token → 委托字段名（成员读写开关表路由用） */
+    private Map<String, String> mixinTokenRoutes(PlanModel model, TypeInfo type) {
+        if (type.mixinIds().isEmpty()) {
+            return Map.of();
+        }
+        java.util.Set<String> primaryTokens = new java.util.HashSet<>();
+        for (MemberInfo member : type.allMembers()) {
+            primaryTokens.add(member.tokenId());
+        }
+        Map<String, String> routes = new LinkedHashMap<>();
+        for (String mixinId : type.mixinIds()) {
+            TypeInfo mixin = model.types.get(mixinId);
+            if (mixin == null) {
+                continue;
+            }
+            for (MemberInfo member : mixin.allMembers()) {
+                if (!primaryTokens.contains(member.tokenId())) {
+                    routes.put(member.tokenId(), mixinFieldName(mixin));
+                }
+            }
+        }
+        return routes;
+    }
+
     private void emitMemberSwitches(TypeSpec.Builder tb, TypeInfo type) {
+        Map<String, String> mixinRoutes = mixinTokenRoutes(model, type);
         MethodSpec.Builder get = MethodSpec.methodBuilder("getMemberValue").addAnnotation(Override.class)
                 .addModifiers(Modifier.PUBLIC).returns(Object.class).addParameter(String.class, "token");
         get.beginControlFlow("switch (token)");
         for (MemberInfo member : type.allMembers()) {
             get.beginControlFlow("case $S ->", member.tokenId());
             get.addStatement("return this.$L", member.field());
+            get.endControlFlow();
+        }
+        for (Map.Entry<String, String> route : mixinRoutes.entrySet()) {
+            MemberInfo member = mixinMember(model, type, route.getKey());
+            get.beginControlFlow("case $S ->", route.getKey());
+            get.addStatement("return this.$L.$L()", route.getValue(), member.getter());
             get.endControlFlow();
         }
         get.addCode("default -> { return $T.MEMBER_NOT_FOUND; }\n", PlanModel.BASE_ENTITY);
@@ -337,12 +511,34 @@ public final class ModelLayerEmitter {
             set.addStatement("this.$L($L, ctx)", member.setterCtx(), decodeValue(member));
             set.endControlFlow();
         }
+        for (Map.Entry<String, String> route : mixinRoutes.entrySet()) {
+            MemberInfo member = mixinMember(model, type, route.getKey());
+            set.beginControlFlow("case $S ->", route.getKey());
+            set.addStatement("this.$L.$L($L, ctx)", route.getValue(), member.setterCtx(), decodeValue(member));
+            set.endControlFlow();
+        }
         set.addCode("default -> { return false; }\n");
         set.endControlFlow();
-        if (!type.allMembers().isEmpty()) {
+        if (!type.allMembers().isEmpty() || !mixinRoutes.isEmpty()) {
             set.addStatement("return true");
         }
         tb.addMethod(set.build());
+    }
+
+    /** 在副父类子树里找成员（开关表路由用；找不到返回 null，路由表与委托生成同源不会失配） */
+    private MemberInfo mixinMember(PlanModel model, TypeInfo type, String tokenId) {
+        for (String mixinId : type.mixinIds()) {
+            TypeInfo mixin = model.types.get(mixinId);
+            if (mixin == null) {
+                continue;
+            }
+            for (MemberInfo member : mixin.allMembers()) {
+                if (member.tokenId().equals(tokenId)) {
+                    return member;
+                }
+            }
+        }
+        return null;
     }
 
     /** 外部传入的原始值 → 成员类型 */

@@ -19,14 +19,24 @@ public final class UniqueIdentifierGuard {
      * 校验用户手工填写的严格编码；非法时直接拒绝并给出修改建议（CK-BE-MDL-003-1）
      */
     public static void validateExplicitEncodeOrThrow(String encode) {
+        String problem = findExplicitEncodeProblem(encode);
+        if (problem != null) {
+            throw new IllegalArgumentException(problem);
+        }
+    }
+
+    /**
+     * 非抛出版编码校验（供 StaticModelValidator 收集 VAL-007 问题用）：
+     * 返回问题描述，合法时返回 null。
+     */
+    public static String findExplicitEncodeProblem(String encode) {
         if (encode == null || !VALID_ENCODE.matcher(encode).matches()) {
-            throw new IllegalArgumentException(
-                    "[MDL-CODE-001] 非法标识符编码 '" + encode + "'：仅允许字母/数字/下划线且不能以数字或中文开头，建议改为合法驼峰英文");
+            return "[MDL-CODE-001] 非法标识符编码 '" + encode + "'：仅允许字母/数字/下划线且不能以数字或中文开头，建议改为合法驼峰英文";
         }
         if (SourceVersion.isKeyword(encode) || !SourceVersion.isName(encode)) {
-            throw new IllegalArgumentException(
-                    "[MDL-CODE-002] 编码 '" + encode + "' 与 Java 21 关键字冲突，建议追加业务后缀如 '" + encode + "Item'");
+            return "[MDL-CODE-002] 编码 '" + encode + "' 与 Java 21 关键字冲突，建议追加业务后缀如 '" + encode + "Item'";
         }
+        return null;
     }
 
     /**

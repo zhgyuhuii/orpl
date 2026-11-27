@@ -229,4 +229,33 @@ class AbModelMergerAndParserTest {
         }
         return GromaTypes.describe(op);
     }
+
+    /**
+     * code3.html 断言核实与收割（类型级守卫接入 + 悬空连线审计 + encode 进 IR）：
+     * code3 声称模型 1 的 3 条 condition + 1 条 invocation-self 为"孤儿实体、无法定位归属过程"——
+     * 对当前语料**不成立**（语料实证：均为挂在类型级设计视图调用点上的规范连线，1 条为真自调用）。
+     * 本轮收割后：① 三条 STATE 积水 --condition--> 过程 从各自宿主（区域/车站/地铁区间均有自己的
+     * 积水状态成员，共享同一枚举）成员链直构操作数进入 canStart——此前整条规则被静默丢弃；
+     * ② 悬空连线审计（PRS-WARN-002）对规范语料零误杀；③ encode 字段随 TypeDefIR/MemberIR 进 IR。
+     */
+    @Test
+    void realCorpusConsumesSemanticGuardsAndCarriesExplicitEncodes() {
+        CompilePlanIR plan = parseCorpus().compilePlan();
+        // ① 三条类型级启动条件全部被消费（宿主链直构操作数，共享枚举各自成员）
+        long guardedProcs = plan.processDefs().stream()
+                .filter(p -> p.startConditions() != null && !p.startConditions().isEmpty()).count();
+        Assertions.assertTrue(guardedProcs >= 3, "模型 1 应有 ≥3 个过程携带类型级启动条件，实际 " + guardedProcs);
+        // ② 每条守卫的操作数必须是宿主自己的成员（ECJ 编译裁判在下游 RealCorpus/ThreeCorpus 用例）
+        // ③ 悬空审计零误杀（全部连线端点可解析时不得虚报）
+        Assertions.assertTrue(plan.warnings().stream().noneMatch(w -> w.startsWith("[PRS-WARN-002]")),
+                "规范语料不应触发悬空连线告警，实际：\n"
+                        + String.join("\n", plan.warnings().stream().filter(w -> w.startsWith("[PRS-WARN-002]")).toList()));
+        Assertions.assertTrue(plan.types().stream().anyMatch(t -> t.explicitEncode() != null && !t.explicitEncode().isBlank()),
+                "语料 TYPE 实体应携带显式 encode（dxlx1 形态）");
+        Assertions.assertTrue(plan.types().stream().flatMap(t -> t.members().stream())
+                        .anyMatch(m -> m.explicitEncode() != null && !m.explicitEncode().isBlank()),
+                "语料成员实体应携带显式 encode");
+        // 模型 1 语料无 edge-control：控制规则为空集（解析器不虚构）
+        Assertions.assertTrue(plan.types().stream().allMatch(t -> t.controls().isEmpty()));
+    }
 }

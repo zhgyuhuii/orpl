@@ -28,7 +28,10 @@ public abstract class BaseSimEntity {
     private final String instanceId;
     private boolean alive = true;
     private long dirtyMask;
+    /** R06 过程使能掩码缓存（生成实体 refreshControlMask 求值写入；-1 = 全部使能） */
     private long controlMask = -1L;
+    /** R06 成员使能掩码缓存（生成实体 refreshControlMask 求值写入；-1 = 全部使能） */
+    private long memberControlMask = -1L;
     private boolean creationOpen;
 
     protected BaseSimEntity(String instanceId) {
@@ -79,9 +82,44 @@ public abstract class BaseSimEntity {
         return controlMask;
     }
 
-    /** R06 结构控制关系：源状态变化时 O(1) 刷新成员可用位与过程使能位 */
+    /**
+     * R06 结构控制（收割自 code3.html G2 方案，按门点求值落地）：
+     * 源状态变化时 O(1) 刷新过程使能位缓存。掩码位 = 类型上控制规则序号，
+     * 生成实体的 {@code refreshControlMask} 按当前枚举成员状态重算后经 {@link #applyControlMasks} 写回。
+     */
     public final void setControlMask(long controlMask) {
         this.controlMask = controlMask;
+    }
+
+    /** R06 成员使能掩码缓存（快照/调试读取；门点求值见生成实体 refreshControlMask） */
+    public final long getMemberControlMask() {
+        return memberControlMask;
+    }
+
+    /**
+     * 生成实体覆写：按当前枚举成员状态重算成员/过程使能掩码并写回缓存。
+     * 默认无控制规则 = 空操作（门点检查零开销）。单写者线程内调用，无锁。
+     */
+    protected void refreshControlMask(GromaWorldContext ctx) {
+    }
+
+    /** R06 求值结果写回（生成实体 refreshControlMask 末尾调用） */
+    protected final void applyControlMasks(long newMemberMask, long newProcessMask) {
+        this.memberControlMask = newMemberMask;
+        this.controlMask = newProcessMask;
+    }
+
+    /**
+     * R06 过程使能查询：bits = 关注的控制规则位集合（按位或），0 = 无控制规则约束（恒使能）；
+     * 否则任一关注位仍使能即通过。
+     */
+    public final boolean processEnabled(long bits) {
+        return bits == 0L || (controlMask & bits) != 0L;
+    }
+
+    /** R06 成员使能查询（语义同 {@link #processEnabled}） */
+    public final boolean memberEnabled(long bits) {
+        return bits == 0L || (memberControlMask & bits) != 0L;
     }
 
     protected final void markDirty(int bitIndex) {
