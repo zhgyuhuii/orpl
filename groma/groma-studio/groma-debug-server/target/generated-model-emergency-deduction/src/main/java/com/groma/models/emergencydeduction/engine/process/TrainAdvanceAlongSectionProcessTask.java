@@ -6,9 +6,9 @@ import com.groma.base.engine.GromaProcessTask;
 import com.groma.base.engine.GromaValues;
 import com.groma.base.engine.GromaWorldContext;
 import com.groma.models.emergencydeduction.model.bo.AdvanceAlongSectionRuntimeBO;
-import com.groma.models.emergencydeduction.model.entity.MetroSectionEntity;
-import com.groma.models.emergencydeduction.model.entity.StationEntity;
 import com.groma.models.emergencydeduction.model.entity.TrainEntity;
+import com.groma.models.emergencydeduction.model.entity.api.MetroSectionReadOnly;
+import com.groma.models.emergencydeduction.model.entity.api.StationReadOnly;
 import java.lang.Boolean;
 import java.lang.Math;
 import java.lang.Object;
@@ -40,12 +40,12 @@ public final class TrainAdvanceAlongSectionProcessTask extends GromaProcessTask 
     /**
      * 非空输入形参：地铁区间
      */
-    private MetroSectionEntity metroSection;
+    private MetroSectionReadOnly metroSection;
 
     /**
      * 非空输入形参：目标车站
      */
-    private StationEntity targetStation;
+    private StationReadOnly targetStation;
 
     /**
      * 非空输入形参：行驶间隔
@@ -73,7 +73,7 @@ public final class TrainAdvanceAlongSectionProcessTask extends GromaProcessTask 
     private final AdvanceAlongSectionRuntimeBO frame = new AdvanceAlongSectionRuntimeBO();
 
     public TrainAdvanceAlongSectionProcessTask(GromaWorldContext ctx, TrainEntity self,
-            MetroSectionEntity metroSection, StationEntity targetStation, double travelInterval,
+            MetroSectionReadOnly metroSection, StationReadOnly targetStation, double travelInterval,
             double travelledDistance, boolean alongIncreasingMileage, double currentLineMileage) {
         super(ctx, self, "dv:designView_1tvmsrr8ydvpCLGAoxr", "沿区间前进", TIMING);
         java.util.Objects.requireNonNull(self, "宿主对象不能为空: 沿区间前进");
@@ -86,25 +86,25 @@ public final class TrainAdvanceAlongSectionProcessTask extends GromaProcessTask 
         this.currentLineMileage = currentLineMileage;
     }
 
-    private void setMetroSection(MetroSectionEntity value) {
+    private void setMetroSection(MetroSectionReadOnly value) {
         this.metroSection = value;
     }
 
     /**
      * 非空输入形参：地铁区间
      */
-    public MetroSectionEntity getMetroSection() {
+    public MetroSectionReadOnly getMetroSection() {
         return this.metroSection;
     }
 
-    private void setTargetStation(StationEntity value) {
+    private void setTargetStation(StationReadOnly value) {
         this.targetStation = value;
     }
 
     /**
      * 非空输入形参：目标车站
      */
-    public StationEntity getTargetStation() {
+    public StationReadOnly getTargetStation() {
         return this.targetStation;
     }
 
@@ -374,8 +374,8 @@ public final class TrainAdvanceAlongSectionProcessTask extends GromaProcessTask 
     @Override
     @SuppressWarnings("unchecked")
     protected void importSlots(Map<String, Object> slots) {
-        this.metroSection = (MetroSectionEntity) GromaValues.decode(slots.get("metroSection"), ctx);
-        this.targetStation = (StationEntity) GromaValues.decode(slots.get("targetStation"), ctx);
+        this.metroSection = (MetroSectionReadOnly) GromaValues.decode(slots.get("metroSection"), ctx);
+        this.targetStation = (StationReadOnly) GromaValues.decode(slots.get("targetStation"), ctx);
         if (slots.get("travelInterval") != null) this.travelInterval = GromaValues.toDouble(slots.get("travelInterval"));
         if (slots.get("travelledDistance") != null) this.travelledDistance = GromaValues.toDouble(slots.get("travelledDistance"));
         if (slots.get("alongIncreasingMileage") != null) this.alongIncreasingMileage = GromaValues.toBoolean(slots.get("alongIncreasingMileage"));

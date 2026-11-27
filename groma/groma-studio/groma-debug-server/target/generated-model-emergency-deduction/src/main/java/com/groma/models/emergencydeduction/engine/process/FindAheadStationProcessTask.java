@@ -7,7 +7,7 @@ import com.groma.base.engine.GromaValues;
 import com.groma.base.engine.GromaWorldContext;
 import com.groma.models.emergencydeduction.model.bo.FindAheadStationRuntimeBO;
 import com.groma.models.emergencydeduction.model.entity.LineWithStationEntity;
-import com.groma.models.emergencydeduction.model.entity.LineWithTrainEntity;
+import com.groma.models.emergencydeduction.model.entity.api.LineWithTrainReadOnly;
 import java.lang.Boolean;
 import java.lang.Double;
 import java.lang.Long;
@@ -36,7 +36,7 @@ public final class FindAheadStationProcessTask extends GromaProcessTask {
     /**
      * 非空输入形参：当前线路与列车
      */
-    private LineWithTrainEntity currentLineWithTrain;
+    private LineWithTrainReadOnly currentLineWithTrain;
 
     /**
      * 输出形参：是否找到
@@ -54,7 +54,7 @@ public final class FindAheadStationProcessTask extends GromaProcessTask {
     private final FindAheadStationRuntimeBO frame = new FindAheadStationRuntimeBO();
 
     public FindAheadStationProcessTask(GromaWorldContext ctx,
-            LineWithTrainEntity currentLineWithTrain, boolean found,
+            LineWithTrainReadOnly currentLineWithTrain, boolean found,
             LineWithStationEntity aheadLineWithStation) {
         super(ctx, null, "dv:designView_65ClRS3n9vUb3935COH", "查找前方车站", TIMING);
         this.currentLineWithTrain = currentLineWithTrain;
@@ -62,14 +62,14 @@ public final class FindAheadStationProcessTask extends GromaProcessTask {
         this.aheadLineWithStation = aheadLineWithStation;
     }
 
-    private void setCurrentLineWithTrain(LineWithTrainEntity value) {
+    private void setCurrentLineWithTrain(LineWithTrainReadOnly value) {
         this.currentLineWithTrain = value;
     }
 
     /**
      * 非空输入形参：当前线路与列车
      */
-    public LineWithTrainEntity getCurrentLineWithTrain() {
+    public LineWithTrainReadOnly getCurrentLineWithTrain() {
         return this.currentLineWithTrain;
     }
 
@@ -338,7 +338,7 @@ public final class FindAheadStationProcessTask extends GromaProcessTask {
     @Override
     @SuppressWarnings("unchecked")
     protected void importSlots(Map<String, Object> slots) {
-        this.currentLineWithTrain = (LineWithTrainEntity) GromaValues.decode(slots.get("currentLineWithTrain"), ctx);
+        this.currentLineWithTrain = (LineWithTrainReadOnly) GromaValues.decode(slots.get("currentLineWithTrain"), ctx);
         if (slots.get("frame") instanceof Map<?, ?> frameState) frame.importState((java.util.Map<String, Object>) frameState, ctx);
     }
 }

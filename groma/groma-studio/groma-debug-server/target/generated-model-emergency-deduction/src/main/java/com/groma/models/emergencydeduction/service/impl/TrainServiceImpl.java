@@ -7,11 +7,11 @@ import com.groma.models.emergencydeduction.engine.process.TrainDepartProcessTask
 import com.groma.models.emergencydeduction.engine.process.TrainEnterStationProcessTask;
 import com.groma.models.emergencydeduction.engine.process.TrainSectionRunProcessTask;
 import com.groma.models.emergencydeduction.engine.process.TrainStoppedAtStationProcessTask;
-import com.groma.models.emergencydeduction.model.entity.MetroSectionEntity;
 import com.groma.models.emergencydeduction.model.entity.SectionWithTrainEntity;
-import com.groma.models.emergencydeduction.model.entity.StationEntity;
 import com.groma.models.emergencydeduction.model.entity.StationWithParkedTrainEntity;
 import com.groma.models.emergencydeduction.model.entity.TrainEntity;
+import com.groma.models.emergencydeduction.model.entity.api.MetroSectionReadOnly;
+import com.groma.models.emergencydeduction.model.entity.api.StationReadOnly;
 import com.groma.models.emergencydeduction.service.ITrainService;
 import java.lang.Override;
 import org.springframework.stereotype.Service;
@@ -23,7 +23,7 @@ import org.springframework.stereotype.Service;
 public class TrainServiceImpl implements ITrainService {
     @Override
     public boolean advanceAlongSection(GromaWorldContext ctx, TrainEntity self,
-            MetroSectionEntity metroSection, StationEntity targetStation, double travelInterval,
+            MetroSectionReadOnly metroSection, StationReadOnly targetStation, double travelInterval,
             double travelledDistance, boolean alongIncreasingMileage, double currentLineMileage) {
         // @GromaUserCode-START ["7rSlUlS0cSWjxGaiErg"]
         // 过程「沿区间前进」的二次开发保护区：在此编写的代码在模型重新生成源码时自动无损保留

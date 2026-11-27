@@ -22,6 +22,9 @@ import com.groma.models.emergencydeduction.model.entity.SectionWithTrainEntity;
 import com.groma.models.emergencydeduction.model.entity.StationEntity;
 import com.groma.models.emergencydeduction.model.entity.StationWithParkedTrainEntity;
 import com.groma.models.emergencydeduction.model.entity.TrainEntity;
+import com.groma.models.emergencydeduction.model.entity.api.LineWithTrainReadOnly;
+import com.groma.models.emergencydeduction.model.entity.api.MetroSectionReadOnly;
+import com.groma.models.emergencydeduction.model.entity.api.StationReadOnly;
 import java.lang.Double;
 import java.lang.Long;
 import java.lang.Object;
@@ -59,7 +62,7 @@ public final class ProcessCatalog {
                 return new AreaSurfaceDrainProcessTask(ctx, (AreaEntity) host);
             }
             case "dv:designView_1tvmsrr8ydvpCLGAoxr" -> {
-                return new TrainAdvanceAlongSectionProcessTask(ctx, (TrainEntity) host, (MetroSectionEntity) (args == null || args.get("地铁区间") == null ? null : GromaValues.decode(args.get("地铁区间"), ctx)), (StationEntity) (args == null || args.get("目标车站") == null ? null : GromaValues.decode(args.get("目标车站"), ctx)), d(args, "行驶间隔"), d(args, "已行驶距离"), b(args, "是否沿里程增大方向"), d(args, "当前线路里程"));
+                return new TrainAdvanceAlongSectionProcessTask(ctx, (TrainEntity) host, (MetroSectionReadOnly) (args == null || args.get("地铁区间") == null ? null : GromaValues.decode(args.get("地铁区间"), ctx)), (StationReadOnly) (args == null || args.get("目标车站") == null ? null : GromaValues.decode(args.get("目标车站"), ctx)), d(args, "行驶间隔"), d(args, "已行驶距离"), b(args, "是否沿里程增大方向"), d(args, "当前线路里程"));
             }
             case "dv:designView_218a29d6cd004955b234ad6b1bafc7b6" -> {
                 return new FileTypeIsEmptyFileProcessTask(ctx, (FileTypeEntity) host, b(args, "是否为空"));
@@ -80,7 +83,7 @@ public final class ProcessCatalog {
                 return new FileTypeFileInitProcessTask(ctx, (FileTypeEntity) host);
             }
             case "dv:designView_65ClRS3n9vUb3935COH" -> {
-                return new FindAheadStationProcessTask(ctx, (LineWithTrainEntity) (args == null || args.get("当前线路与列车") == null ? null : GromaValues.decode(args.get("当前线路与列车"), ctx)), b(args, "是否找到"), (LineWithStationEntity) (args == null || args.get("前方线路与车站") == null ? null : GromaValues.decode(args.get("前方线路与车站"), ctx)));
+                return new FindAheadStationProcessTask(ctx, (LineWithTrainReadOnly) (args == null || args.get("当前线路与列车") == null ? null : GromaValues.decode(args.get("当前线路与列车"), ctx)), b(args, "是否找到"), (LineWithStationEntity) (args == null || args.get("前方线路与车站") == null ? null : GromaValues.decode(args.get("前方线路与车站"), ctx)));
             }
             case "dv:designView_767z0mfmOaNst2dPwlG" -> {
                 return new TrainDepartProcessTask(ctx, (TrainEntity) host, (StationWithParkedTrainEntity) (args == null || args.get("车站与停靠列车") == null ? null : GromaValues.decode(args.get("车站与停靠列车"), ctx)));

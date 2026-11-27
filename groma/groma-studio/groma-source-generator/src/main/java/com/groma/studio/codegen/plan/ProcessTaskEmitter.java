@@ -180,12 +180,24 @@ public final class ProcessTaskEmitter {
                     .addModifiers(Modifier.PROTECTED).addParameter(int.class, "pc")
                     .addStatement("if (pc == $L) return", proc.entries().length == 0 ? -1 : proc.entries()[0]).build());
             tb.addMethod(emitCanStart(model, proc));
+            MethodSpec maintain = emitCheckMaintain(model, proc);
+            if (maintain != null) {
+                tb.addMethod(maintain);
+            }
             JavaFile bo = emitRuntimeBo(model, proc);
             JavaFile task = JavaFile.builder(proc.taskCn().packageName(), addCommonTail(model, proc, tb, scope, false).build())
                     .indent("    ").build();
             return new Result(task, bo, leaf.scripts);
         }
         tb.addMethod(emitCanStart(model, proc));
+        MethodSpec maintain = emitCheckMaintain(model, proc);
+        if (maintain != null) {
+            tb.addMethod(maintain);
+        }
+        MethodSpec failed = emitNodeFailed(model, proc, scope);
+        if (failed != null) {
+            tb.addMethod(failed);
+        }
         JavaFile bo = emitRuntimeBo(model, proc);
         JavaFile task = JavaFile.builder(proc.taskCn().packageName(), addCommonTail(model, proc, tb, scope, true).build())
                 .indent("    ").build();
@@ -225,7 +237,8 @@ public final class ProcessTaskEmitter {
                 try {
                     value = condScope.render(rule.operand());
                 } catch (RuntimeException ex) {
-                    mb.addStatement("// 启动条件[$L]的操作数无法解析，已跳过: $L", rule.describe(), String.valueOf(ex.getMessage()));
+                    mb.addStatement("// 启动条件[$L]的操作数无法解析，已跳过: $L", rule.describe(),
+                            oneLineText(String.valueOf(ex.getMessage())));
                     continue;
                 }
                 boolean generated = false;
@@ -259,6 +272,121 @@ public final class ProcessTaskEmitter {
         }
         mb.addStatement("return true");
         return mb.build();
+    }
+
+    /**
+     * R21 维持条件逐拍校验（方案 D 收割）：maintainConditions 编译为布尔守卫，
+     * 不满足时派发 paa 并级联终止（abortByMaintainBroken）。无维持条件时不生成（基类空实现零开销）。
+     */
+    private MethodSpec emitCheckMaintain(PlanModel model, ProcInfo proc) {
+        List<CompilePlanIR.ConditionRuleIR> maintains = proc.def().maintainConditions();
+        if (maintains == null || maintains.isEmpty()) {
+            return null;
+        }
+        MethodSpec.Builder mb = MethodSpec.methodBuilder("checkMaintain")
+                .addAnnotation(Override.class).addModifiers(Modifier.PROTECTED);
+        TaskScope condScope = new TaskScope(model, proc);
+        boolean any = false;
+        for (CompilePlanIR.ConditionRuleIR rule : maintains) {
+            OperandRenderer.Value value;
+            try {
+                value = condScope.render(rule.operand());
+            } catch (RuntimeException ex) {
+                model.diagnostic("过程 " + proc.zhName() + " 维持条件[" + rule.describe() + "]的操作数无法解析，已降级注释: "
+                        + ex.getMessage());
+                mb.addStatement("// 维持条件[$L]的操作数无法解析，已跳过: $L", rule.describe(),
+                        oneLineText(String.valueOf(ex.getMessage())));
+                continue;
+            }
+            List<CodeBlock> judges = new ArrayList<>();
+            if (rule.stateLabel() != null && !rule.stateLabel().isBlank()) {
+                judges.add(CodeBlock.of("\"$L\".equals($T.enumZhLabel((Enum<?>) ($L)))",
+                        rule.stateLabel(), PlanModel.BASE_ENTITY, value.code()));
+            }
+            for (CompilePlanIR.ConditionIR c : rule.conditions() == null ? java.util.List.<CompilePlanIR.ConditionIR>of()
+                    : rule.conditions()) {
+                // 只内联可安全拼接的比较符（逐拍执行路径）；其余（非 ASCII / 未知）降级注释，不产非法 Java
+                String op = switch (c.op() == null ? "" : c.op()) {
+                    case "=" -> "==";
+                    case "!=", "<", "<=", ">", ">=" -> c.op();
+                    default -> null;
+                };
+                if (op == null) {
+                    model.diagnostic("过程 " + proc.zhName() + " 维持条件[" + rule.describe() + "]的比较符 "
+                            + c.op() + " 不支持内联，已降级注释");
+                    judges.clear();
+                    break;
+                }
+                String literal = switch (c.literalType() == null ? "number" : c.literalType()) {
+                    case "string" -> "\"" + c.literal() + "\"";
+                    case "null" -> "null";
+                    default -> c.literal();
+                };
+                judges.add(CodeBlock.of("($L " + op + " " + literal + ")", value.code()));
+            }
+            if (judges.isEmpty()) {
+                continue;
+            }
+            if (judges.isEmpty()) {
+                mb.addStatement("// 复合维持条件[$L]待表达式求值器接入: $L", rule.describe(),
+                        String.valueOf(rule.expression()));
+                continue;
+            }
+            CodeBlock.Builder judge = CodeBlock.builder().add(judges.get(0));
+            for (int i = 1; i < judges.size(); i++) {
+                judge.add(" && ").add(judges.get(i));
+            }
+            mb.beginControlFlow("if (!($L))", judge.build());
+            mb.addStatement("// R21 维持条件中断：$L", rule.describe().replace("$", "＄"));
+            mb.addStatement("ctx.emitProcessEvent(this, \"paa\", $S)", "维持条件中断: " + rule.describe());
+            mb.addStatement("abortByMaintainBroken($S)", rule.describe());
+            mb.addStatement("return");
+            mb.endControlFlow();
+            any = true;
+        }
+        if (!any) {
+            return null;
+        }
+        return mb.build();
+    }
+
+    /**
+     * R23 失败事件线（方案 D 收割）：调用线携带 psf/paa 的后继按子过程出口路由到失败分支。
+     * 子过程失败时基座调用 nodeFailed（pc = 调用节点），这里按 childExitEvent 激活对应后继。
+     */
+    private MethodSpec emitNodeFailed(PlanModel model, ProcInfo proc, TaskScope scope) {
+        Map<Integer, List<NextIR>> byPc = new java.util.LinkedHashMap<>();
+        for (NodeSlot slot : proc.nodes()) {
+            if (!slot.isCall()) {
+                continue;
+            }
+            for (NextIR next : slot.node().nexts()) {
+                if (targetNode(proc, next) == null || next.eventCode().isEmpty()
+                        || !(next.eventCode().equals("psf") || next.eventCode().equals("paa"))) {
+                    continue;
+                }
+                byPc.computeIfAbsent(slot.pc(), k -> new ArrayList<>()).add(next);
+            }
+        }
+        if (byPc.isEmpty()) {
+            return null;
+        }
+        CodeBlock.Builder cb = CodeBlock.builder();
+        cb.beginControlFlow("switch (pc)");
+        for (Map.Entry<Integer, List<NextIR>> entry : byPc.entrySet()) {
+            cb.beginControlFlow("case $L ->", entry.getKey());
+            NodeSlot failedSlot = proc.node(entry.getKey());
+            for (NextIR next : entry.getValue()) {
+                emitGuardedActivation(model, proc, failedSlot, scope, next, cb);
+            }
+            cb.endControlFlow();
+        }
+cb.add("default -> { }\n");
+        cb.endControlFlow();
+        return MethodSpec.methodBuilder("nodeFailed")
+                .addAnnotation(Override.class).addModifiers(Modifier.PROTECTED)
+                .addParameter(int.class, "pc").addParameter(PlanModel.PROCESS_TASK, "child")
+                .addCode(cb.build()).build();
     }
 
     // ------------------------------------------------------------------ execNode
@@ -396,36 +524,174 @@ public final class ProcessTaskEmitter {
         // 2. 后置动作
         emitPostActions(model, proc, scope, node.postActions(), cb);
 
-        // 3. 后继（条件调用线各自按其出发端口的输出值判断）
+        // 3. 后继：互斥概率组（标准 10.4 CDF 采样）→ 无组连线（条件判断 / R23 事件线 / 独立概率）
+        java.util.Set<NextIR> grouped = emitProbabilityGroups(model, proc, slot, cb);
         for (NextIR next : node.nexts()) {
             NodeSlot target = proc.node(next.targetPc());
             if (target == null) {
                 continue;
             }
+            if (grouped.contains(next)) {
+                continue; // 已在概率组内统一采样（带条件/事件的组员不入组，走独立线路由）
+            }
             if (!next.conditional()) {
                 if (!next.eventCode().isEmpty()) {
-                    model.diagnostic("过程 " + proc.zhName() + "：" + node.zhName() + " → " + target.node().zhName()
-                            + " 的调用线携带过程事件 " + next.eventCode() + "，暂未编译，已跳过");
+                    // R23 事件线（方案 D 收割）：pca/pcd 出口在成功路径路由（子过程超时/提前完成后继）；
+                    // psf/paa 出口由 nodeFailed 失败分支路由（见 emitNodeFailed）
+                    if (next.eventCode().equals("pca") || next.eventCode().equals("pcd")) {
+                        emitGuardedActivation(model, proc, slot, scope, next, cb);
+                    } else if (!next.eventCode().equals("psf") && !next.eventCode().equals("paa")) {
+                        model.diagnostic("过程 " + proc.zhName() + "：" + node.zhName() + " → " + target.node().zhName()
+                                + " 的调用线携带事件 " + next.eventCode() + " 非过程出口码，暂未编译，已跳过");
+                    }
                     continue;
                 }
-                if (next.delayTicks() > 0) {
-                    // 连线延迟（存量“等待”子过程语义）：延迟 N 拍后激活后继
-                    cb.addStatement("activateAfter($L, $LL)", next.targetPc(), next.delayTicks());
-                } else {
-                    cb.addStatement("activate($L)", next.targetPc());
-                }
+                emitActivation(cb, next);
             } else {
                 Value output = outputValue(model, proc, slot, scope, next.conditionSource());
                 CodeBlock judge = output == null ? CodeBlock.of("true") : judgeCode(model, next, output);
                 if (judge.toString().equals("true")) {
-                    cb.addStatement("activate($L)", next.targetPc());
+                    emitActivation(cb, next);
                 } else {
                     cb.beginControlFlow("if ($L)", judge);
-                    cb.addStatement("activate($L)", next.targetPc());
+                    emitActivation(cb, next);
                     cb.endControlFlow();
                 }
             }
         }
+
+        // 4. R25/R26 异常控制流边（方案 D 收割）：被监控耗时子过程超时/提前完成 → 激活异常处理路径
+        for (CompilePlanIR.ExceptionFlowIR flow : proc.def().exceptionFlows() == null
+                ? java.util.List.<CompilePlanIR.ExceptionFlowIR>of() : proc.def().exceptionFlows()) {
+            if (flow.sourcePc() < 0) {
+                // 过程级监控（sourcePc=-1）：成功后激活已无机器可走，只保留引擎侧 pca/pcd 事件
+                if (slot.pc() == proc.nodes().get(0).pc()) {
+                    model.diagnostic("过程 " + proc.zhName() + " 的过程级异常流（" + flow.eventKind()
+                            + "）只派发事件，不激活节点（成功后流程已收尾）");
+                }
+                continue;
+            }
+            if (flow.sourcePc() != slot.pc() || proc.node(flow.targetPc()) == null) {
+                continue;
+            }
+            String exitCode = "OVERTIME_PCD".equals(flow.eventKind()) ? "pcd" : "pca";
+            cb.beginControlFlow("if ($S.equals(childExitEvent($L)))", exitCode, slot.pc());
+            cb.addStatement("activate($L)", flow.targetPc());
+            cb.endControlFlow();
+        }
+
+        // 5. lastEnd 结束点（方案 D 收割）：完成后立即收尾并级联取消同层旁路子过程
+        if (node.lastEnd()) {
+            cb.addStatement("finishWithLastEnd()");
+        }
+    }
+
+    /** 后继激活（含连线延迟：存量“等待”子过程语义，延迟 N 拍后激活） */
+    private static void emitActivation(CodeBlock.Builder cb, NextIR next) {
+        if (next.delayTicks() > 0) {
+            cb.addStatement("activateAfter($L, $LL)", next.targetPc(), next.delayTicks());
+        } else {
+            cb.addStatement("activate($L)", next.targetPc());
+        }
+    }
+
+    /** 事件线 / 概率连线的守卫激活：出口码匹配（可选）+ 独立概率伯努利（可选）+ 条件判断（可选） */
+    private void emitGuardedActivation(PlanModel model, ProcInfo proc, NodeSlot slot, TaskScope scope,
+                                       NextIR next, CodeBlock.Builder cb) {
+        int pc = slot.pc();
+        List<CodeBlock> guards = new ArrayList<>();
+        if (!next.eventCode().isEmpty()) {
+            guards.add(CodeBlock.of("$S.equals(childExitEvent($L))", next.eventCode(), pc));
+        }
+        if (!next.probabilityGroup().isEmpty()) {
+            model.diagnostic("过程 " + proc.zhName() + "：pc=" + pc + " 的概率组连线同时携带事件/条件，按独立连线处理");
+        } else if (next.probability() > 0.0D && next.probability() < 0.9999D) {
+            guards.add(CodeBlock.of("ctx.randomStream().nextDouble() < $L", String.valueOf(next.probability())));
+        }
+        if (next.conditional()) {
+            Value output = outputValue(model, proc, slot, scope, next.conditionSource());
+            guards.add(judgeCode(model, next, output));
+        }
+        if (guards.isEmpty()) {
+            emitActivation(cb, next);
+            return;
+        }
+        CodeBlock.Builder judge = CodeBlock.builder().add(guards.get(0));
+        for (int i = 1; i < guards.size(); i++) {
+            judge.add(" && ").add(guards.get(i));
+        }
+        cb.beginControlFlow("if ($L)", judge.build());
+        emitActivation(cb, next);
+        cb.endControlFlow();
+    }
+
+    private static NodeSlot targetNode(ProcInfo proc, NextIR next) {
+        return proc.node(next.targetPc());
+    }
+
+    /**
+     * 互斥概率组（标准 10.4，方案 D 收割）：同组连线按 probability 归一后做 CDF 采样，
+     * 恰好激活一个后继。采样走 ctx.randomStream()（任务级确定性随机流，存档游标随存档恢复）。
+     */
+    private java.util.Set<NextIR> emitProbabilityGroups(PlanModel model, ProcInfo proc, NodeSlot slot,
+                                                        CodeBlock.Builder cb) {
+        java.util.Set<NextIR> grouped = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Map<String, List<NextIR>> groups = new java.util.LinkedHashMap<>();
+        for (NextIR next : slot.node().nexts()) {
+            if (targetNode(proc, next) == null || next.probabilityGroup().isEmpty()
+                    || next.probability() <= 0.0D) {
+                continue;
+            }
+            if (next.conditional() || !next.eventCode().isEmpty()) {
+                model.diagnostic("过程 " + proc.zhName() + "：概率组连线同时携带条件/事件，按独立连线处理");
+                continue;
+            }
+            groups.computeIfAbsent(next.probabilityGroup(), k -> new ArrayList<>()).add(next);
+            grouped.add(next);
+        }
+        for (Map.Entry<String, List<NextIR>> entry : groups.entrySet()) {
+            if (entry.getValue().size() < 2) {
+                model.diagnostic("过程 " + proc.zhName() + "：概率组 " + entry.getKey() + " 只有 1 个成员，按独立连线处理");
+                grouped.removeAll(entry.getValue());
+                continue;
+            }
+            double sum = 0.0D;
+            for (NextIR next : entry.getValue()) {
+                sum += next.probability();
+            }
+            cb.addStatement("// 概率组 $L（$L 个成员，概率和 $L，CDF 互斥采样）", entry.getKey(),
+                    entry.getValue().size(), String.valueOf(sum));
+            cb.addStatement("double groupR$L = ctx.randomStream().nextDouble()", sanitizeGroup(entry.getKey()));
+            double acc = 0.0D;
+            for (int i = 0; i < entry.getValue().size(); i++) {
+                NextIR next = entry.getValue().get(i);
+                acc += sum > 0.0D ? next.probability() / sum : 1.0D / entry.getValue().size();
+                String bound = String.valueOf(acc);
+                if (i == entry.getValue().size() - 1) {
+                    // 末成员兜底：概率归一后落在前面所有成员之外（浮点余量）时必中
+                    cb.addStatement("activate($L)", next.targetPc());
+                } else {
+                    // palantir javapoet 0.5.0：else-if 链必须 nextControlFlow（endControlFlow("else")
+                    // 是 do-while 收尾语义，生成 `} else;` 空语句，互斥采样会静默失效——实测踩雷）
+                    cb.beginControlFlow("if (groupR$L < $L)", sanitizeGroup(entry.getKey()), bound);
+                    emitActivation(cb, next);
+                    cb.nextControlFlow("else");
+                }
+            }
+        }
+        return grouped;
+    }
+
+    /** 任意文本单行化 + $ 转义（进生成代码注释的安全形态） */
+    private static String oneLineText(String text) {
+        return (text == null ? "" : text.replaceAll("\\s*\\r?\\n\\s*", " ")).replace("$", "＄");
+    }
+
+    /** 概率组名转合法 Java 标识片段（生成局部变量用） */
+    private static String sanitizeGroup(String group) {
+        return group.codePoints().allMatch(ch -> Character.isJavaIdentifierPart(ch))
+                ? group
+                : "g" + Integer.toUnsignedString(group.hashCode());
     }
 
     /** 被线上判断引用的端口输出：工具节点的输出槽位，或子过程的输出形参 */

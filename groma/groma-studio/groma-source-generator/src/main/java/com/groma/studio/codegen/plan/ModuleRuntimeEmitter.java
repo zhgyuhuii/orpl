@@ -174,13 +174,27 @@ public final class ModuleRuntimeEmitter {
                 if (sourceType == null) {
                     model.diagnostic("事件接线的源对象类型未知: " + trigger.describe());
                 }
-                ctor.addCode("// $L：$L.$L [$L] →「$L」\n", trigger.describe(), sourceType == null ? "?" : sourceType.zhName(),
+                ctor.addCode("// $L：$L.$L [$L] →「$L」\n",
+                        trigger.describe().replaceAll("\\s*\\r?\\n\\s*", " ").replace("$", "＄"),
+                        sourceType == null ? "?" : sourceType.zhName(),
                         model.memberZhName(trigger.memberToken()), trigger.eventCode(), target.zhName());
-                ctor.addStatement("table.onEvent($S, $S, $S, $S, $L, $L, $L, this::start$L, $S)", sourceCode,
+                // 触发概率（标准 10.4，方案 D 收割）：0<p<1 的触发线按伯努利门控（任务级确定性随机流）；
+                // 互斥概率组跨触发线的 CDF 采样需要共享随机预算，语料未出现，遇组名记诊断降级
+                CodeBlock starter = CodeBlock.of("this::start$L", wiring.seq());
+                if (trigger.probability() > 0.0D && trigger.probability() < 0.9999D) {
+                    if (!trigger.probabilityGroup().isEmpty()) {
+                        model.diagnostic("触发线概率组 " + trigger.probabilityGroup() + "（" + trigger.describe()
+                                + "）暂不支持跨线互斥采样，已按独立伯努利处理");
+                    }
+                    starter = CodeBlock.of("(c2, ctxE, hostE) -> {"
+                            + " if (c2.randomStream().nextDouble() < $L) { start$L(c2, ctxE, hostE); } }",
+                            String.valueOf(trigger.probability()), wiring.seq());
+                }
+                ctor.addStatement("table.onEvent($S, $S, $S, $S, $L, $L, $L, $L, $S)", sourceCode,
                         trigger.memberToken(), trigger.eventCode(), nvl(trigger.stateLabel()),
                         trigger.judge().isEmpty() ? CodeBlock.of("null")
                                 : CodeBlock.of("$T::judge$L", model.conditionJudge, wiring.seq()),
-                        listOf(trigger.contextPath()), listOf(trigger.hostPath()), wiring.seq(), target.zhName());
+                        listOf(trigger.contextPath()), listOf(trigger.hostPath()), starter, target.zhName());
             }
         }
         rb.addMethod(ctor.build());
@@ -232,6 +246,7 @@ public final class ModuleRuntimeEmitter {
                 .addParameter(String.class, "defKey").addParameter(PlanModel.WORLD_CTX, "ctx")
                 .addParameter(PlanModel.BASE_ENTITY, "host").addParameter(MAP_OF_OBJECTS, "args")
                 .addStatement("return $T.newTask(defKey, ctx, host, args)", model.processCatalog).build());
+        rb.addMethod(emitReattachWiringHook(wirings));
         rb.addMethod(override("types").returns(PlanModel.listOf(TYPE_DESCRIPTOR))
                 .addStatement("return $T.TYPES", model.processCatalog).build());
         rb.addMethod(override("processes").returns(PlanModel.listOf(PROCESS_DESCRIPTOR))
@@ -352,6 +367,51 @@ public final class ModuleRuntimeEmitter {
 
     // ------------------------------------------------------------------ 启动器与后置动作
 
+    /**
+     * 存档续跑重建在途顶层任务后，按存档记录的接线上下文重挂输出影响回写钩子（afterN 是接线侧闭包，
+     * 任务本身不带；不重挂则续跑后的过程成功不回写成员——T1.5 分叉根因二「在途任务对齐」）。
+     * 键 = 过程定义键，与 startN 一一对应；无输出影响的接线（无 afterN）天然不在此列。
+     */
+    private MethodSpec emitReattachWiringHook(List<Wiring> wirings) {
+        MethodSpec.Builder mb = MethodSpec.methodBuilder("reattachWiringHook")
+                .addAnnotation(Override.class).addModifiers(Modifier.PUBLIC)
+                .addParameter(String.class, "defKey").addParameter(PlanModel.WORLD_CTX, "ctx")
+                .addParameter(PlanModel.BASE_ENTITY, "context").addParameter(PlanModel.BASE_ENTITY, "host")
+                .addParameter(PlanModel.PROCESS_TASK, "task")
+                .addJavadoc("按定义键与接线上下文类型重挂输出影响回写钩子（存档续跑专用）\n");
+        boolean any = false;
+        java.util.Set<String> reattachedKeys = new java.util.HashSet<>();
+        for (Wiring wiring : wirings) {
+            if (wiring.postActions().isEmpty()) {
+                continue;
+            }
+            ProcInfo target = model.procs.get(wiring.targetDefKey());
+            TypeInfo contextType = model.types.get(wiring.typeId());
+            if (target == null || contextType == null) {
+                continue;
+            }
+            // 手动接线同样要重挂（续跑侧无法区分手动/触发，统一按 defKey + 上下文类型分发）
+            if (!reattachedKeys.add(wiring.targetDefKey() + "@" + contextType.code())) {
+                model.diagnostic("过程 " + target.zhName() + " 在类型 " + contextType.zhName()
+                        + " 上有多条带输出影响的接线：存档续跑统一重挂第一条（after" + wiring.seq()
+                        + "）的回写钩子，其余接线若回写目标不同需拆分过程定义");
+                continue;
+            }
+            any = true;
+            mb.beginControlFlow("if ($S.equals(defKey) && context instanceof $T)",
+                    wiring.targetDefKey(), contextType.entity());
+            mb.addStatement("task.setCompletionHook(() -> after$L(ctx, context, host, ($T) task))",
+                    wiring.seq(), target.taskCn());
+            mb.addStatement("return");
+            mb.endControlFlow();
+        }
+        mb.addComment("无输出影响接线或非接线启动（手动/子过程）的过程不需要回写钩子\n");
+        if (!any) {
+            // 保留空体（注释已加）：模型没有任何带输出影响的接线
+        }
+        return mb.build();
+    }
+
     /** 生成 startN（绑定实参并启动目标过程）与 afterN（过程成功后的 out-change / result / consumption） */
     private void emitStarter(TypeSpec.Builder rb, StarterScope scope, Wiring wiring) {
         if (wiring.manual()) {
@@ -393,6 +453,7 @@ public final class ModuleRuntimeEmitter {
             start.addStatement("c.launch($L)", call.build());
         } else {
             start.addStatement("$T task = $L", target.taskCn(), call.build());
+            start.addStatement("task.setWiringContext(contextEntity)");
             start.addStatement("task.setCompletionHook(() -> $L(c, context, host, task))", afterName);
             start.addStatement("c.launch(task)");
             MethodSpec.Builder after = MethodSpec.methodBuilder(afterName).addModifiers(Modifier.PRIVATE)
@@ -456,6 +517,7 @@ public final class ModuleRuntimeEmitter {
             start.addStatement("return $L", call.build());
         } else {
             start.addStatement("$T task = $L", target.taskCn(), call.build());
+            start.addStatement("task.setWiringContext(contextEntity)");
             start.addStatement("task.setCompletionHook(() -> $L(c, context, host, task))", afterName);
             start.addStatement("return task");
             MethodSpec.Builder after = MethodSpec.methodBuilder(afterName).addModifiers(Modifier.PRIVATE)

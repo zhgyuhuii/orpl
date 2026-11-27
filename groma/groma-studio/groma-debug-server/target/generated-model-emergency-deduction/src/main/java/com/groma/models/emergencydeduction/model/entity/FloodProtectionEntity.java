@@ -1,6 +1,7 @@
 package com.groma.models.emergencydeduction.model.entity;
 
 import com.groma.base.common.annotation.GromaMeta;
+import com.groma.base.common.container.ObservableEntityList;
 import com.groma.base.engine.BaseSimEntity;
 import com.groma.base.engine.GromaMemberMeta;
 import com.groma.base.engine.GromaValues;
@@ -11,6 +12,7 @@ import java.lang.Object;
 import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -48,7 +50,7 @@ public class FloodProtectionEntity extends BaseSimEntity implements FloodProtect
             zhName = "防护挡水墙",
             kind = "FIELD"
     )
-    private List<StationEntity> protectiveFloodWall = new java.util.ArrayList<>(16);
+    private List<StationEntity> protectiveFloodWall = new ObservableEntityList<>(new ArrayList<>(16), null);
 
     /**
      * 防护区间（方圆对象成员原名：防护区间）
@@ -98,7 +100,7 @@ public class FloodProtectionEntity extends BaseSimEntity implements FloodProtect
             return;
         }
         List<StationEntity> before = this.protectiveFloodWall;
-        this.protectiveFloodWall = value;
+        this.protectiveFloodWall = ObservableEntityList.observed(value, ctx.collectionSink(this, "m0CoVE4j8kj040bE79P"));
         markDirty(0);
         ctx.onMemberChanged(this, "m0CoVE4j8kj040bE79P", before, value);
     }

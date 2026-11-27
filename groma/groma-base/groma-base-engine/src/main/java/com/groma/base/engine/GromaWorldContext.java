@@ -126,6 +126,8 @@ public abstract class GromaWorldContext extends AbstractWorldSession
     public final <T extends BaseSimEntity> T spawn(T entity) {
         if (register(entity) && !silent) {
             enqueueMemberEvent("a", entity.getInstanceId(), "", "", entity.getInstanceId(), "created");
+            // 被动视角出现事件（方案 C 收割）：不带默认启动语义，供订阅方按事件码区分主动/被动
+            enqueueMemberEvent("as", entity.getInstanceId(), "", "", entity.getInstanceId(), "created");
         }
         return entity;
     }
@@ -330,9 +332,10 @@ public abstract class GromaWorldContext extends AbstractWorldSession
         }
     }
 
-    /** 对象被消耗（R11） */
+    /** 对象被消耗（R11）：主动 x + 被动 xs 双视角（方案 C 收割） */
     final void onEntityConsumed(BaseSimEntity entity) {
         enqueueObjectEvent("x", entity.getInstanceId(), "对象被消耗");
+        enqueueMemberEvent("xs", entity.getInstanceId(), "", "", entity.getInstanceId(), "对象被消耗");
     }
 
     /**
@@ -410,10 +413,46 @@ public abstract class GromaWorldContext extends AbstractWorldSession
     }
 
     /**
+     * 集合成员的增删事件汇（方案 C 收割，供生成实体把集合字段接到双视角事件总线）：
+     * 汇收到 ObservableEntityList 的 "ma"/"mx" 元素操作码，转调双视角派发（持有方 ma/mx + 元素 am/xm）。
+     */
+    public final <T> java.util.function.BiConsumer<String, T> collectionSink(BaseSimEntity owner,
+                                                                             String collectionMemberId) {
+        return collectionSinkWithProxies(owner, collectionMemberId, java.util.List.of());
+    }
+
+    /**
+     * 集合成员的增删事件汇（R05 集合代理消费，方案 C 收割）：除集合成员自身的双视角事件外，
+     * 对代理该集合的 PROXY 定义（proxyMemberIds = 代理图元实体 id 列表）同步派发同码事件——
+     * 事件源仍是持有方、成员标识换成代理 id，使画布上经由代理图元引用集合元素的订阅方可被触发。
+     */
+    public final <T> java.util.function.BiConsumer<String, T> collectionSinkWithProxies(
+            BaseSimEntity owner, String collectionMemberId, java.util.List<String> proxyMemberIds) {
+        return (code, element) -> {
+            if ("ma".equals(code)) {
+                emitCollectionElementAdded(owner, collectionMemberId, element);
+                for (String proxyId : proxyMemberIds) {
+                    emitCollectionElementAdded(owner, proxyId, element);
+                }
+            } else if ("mx".equals(code)) {
+                emitCollectionElementRemoved(owner, collectionMemberId, element);
+                for (String proxyId : proxyMemberIds) {
+                    emitCollectionElementRemoved(owner, proxyId, element);
+                }
+            }
+        };
+    }
+
+    /**
      * 过程级四类异常与边界事件统一派发入口（psf 启动失败 / paa 维持中断 / pca 提前完成 / pcd 超时完成）。
      */
     public void emitProcessEvent(GromaProcessTask task, String eventCode, String detail) {
         BaseSimEntity host = task.hostEntity();
+        if (host == null) {
+            // 过程事件以宿主为事件源挂入总线；独立过程（无宿主）无处挂靠，记追踪问题即止
+            problem("过程 " + task.getProcessInstanceId() + "（无宿主）发生 " + eventCode + ": " + detail);
+            return;
+        }
         fire(eventCode, host, task.getDefKey(), "", task.getProcessInstanceId(), detail);
     }
 
@@ -496,7 +535,8 @@ public abstract class GromaWorldContext extends AbstractWorldSession
                 return;
             }
         }
-        if (!source.isAlive() && !"x".equals(event.eventCode())) {
+        // x 与 xs（被动消亡视角）的源实体在派发时必然已消亡，同样豁免存活守卫
+        if (!source.isAlive() && !"x".equals(event.eventCode()) && !"xs".equals(event.eventCode())) {
             return;
         }
         runtime.triggerTable().dispatch(this, source, event);
@@ -921,7 +961,8 @@ public abstract class GromaWorldContext extends AbstractWorldSession
             out.add(new SimulationArchiveBundle.ProcessArchivePart(
                     archiveId, tickIndex, task.getProcessInstanceId(), task.getDefKey(),
                     task.host() == null ? "" : task.host().getInstanceId(), task.getStatus(),
-                    task.getStepCount(), task.getElapsedMs(), task.getExpectedMs(), task.getParentPc(), task.exportRuntime()));
+                    task.getStepCount(), task.getElapsedMs(), task.getExpectedMs(), task.getParentPc(), task.exportRuntime(),
+                    task.wiringContext() == null ? "" : task.wiringContext().getInstanceId()));
         }
         return out;
     }
@@ -949,6 +990,8 @@ public abstract class GromaWorldContext extends AbstractWorldSession
         processById.clear();
         processLocks.clear();
         recentEvents.clear();
+        // 待派发事件队列一并清空：恢复前初始化入队的过期事件不得在续跑首拍派发（T1.5 分叉根因一，事件重放）
+        clearPendingEventsForArchiveRestore();
     }
 
     @Override
@@ -1015,19 +1058,38 @@ public abstract class GromaWorldContext extends AbstractWorldSession
             GromaProcessTask task;
             try {
                 task = runtime.newProcess(part.processDefId(), this, host, Map.of());
+            } catch (RuntimeException rebuildFailure) {
+                // 宿主实例可能已在存档前被安全点回收（生成的构造器 requireNonNull 抛出）：
+                // 该过程无法重建，记问题跳过而不是让整个恢复中断
+                task = null;
+                problem("存档过程 " + part.processInstanceId() + " 重建失败: " + rebuildFailure.getMessage());
             } finally {
                 processIdOverride = null;
             }
             if (task == null) {
-                problem("存档过程定义不存在: " + part.processDefId());
                 continue;
             }
             Object parentRaw = part.runtimeState() == null ? null : part.runtimeState().get("parentInstanceId");
             String parentInstanceId = parentRaw == null ? "" : String.valueOf(parentRaw);
             task.importRuntime(part.runtimeState());
+            // 单实例锁重绑：恢复的任务结束时必须能解掉自己持有的锁（T1.5 分叉根因三）
+            task.restoreSingletonLock();
+            // 接线上下文随存档恢复：顶层任务重挂输出影响回写钩子（生成的 afterN 是接线侧闭包，
+            // 不重挂则续跑后的过程成功不回写成员——T1.5 分叉根因二「在途任务对齐」）
+            if (!part.wiringContextInstanceId().isEmpty()) {
+                BaseSimEntity wiringContext = instancesById.get(part.wiringContextInstanceId());
+                if (wiringContext != null) {
+                    task.setWiringContext(wiringContext);
+                    runtime.reattachWiringHook(part.processDefId(), this, wiringContext, host, task);
+                } else {
+                    problem("存档过程的接线上下文实例不存在: " + part.wiringContextInstanceId());
+                }
+            }
             byId.put(task.getProcessInstanceId(), task);
             processById.put(task.getProcessInstanceId(), task);
             parentIds.put(task.getProcessInstanceId(), parentInstanceId);
+            // 过程实例序号随存档推进：续跑后新建过程的实例标识不得与恢复的任务撞名
+            advanceProcessSeq(part.processInstanceId());
             if (task.isTimeRelated() && task.timing().twinLocked()) {
                 onTwinProcessStarted();
                 task.markTwinCounted();
@@ -1045,6 +1107,17 @@ public abstract class GromaWorldContext extends AbstractWorldSession
                 } else {
                     task.linkToParent(parent, task.getParentPc());
                 }
+            }
+        }
+    }
+
+    /** 按恢复的过程实例标识（“p<序号>”形态）推进过程实例序号游标，避免续跑新建过程撞名 */
+    private void advanceProcessSeq(String processInstanceId) {
+        if (processInstanceId != null && processInstanceId.startsWith("p")) {
+            try {
+                processSeq = Math.max(processSeq, Long.parseLong(processInstanceId.substring(1)));
+            } catch (NumberFormatException ignored) {
+                // 非序号形态的过程实例标识，无需推进
             }
         }
     }

@@ -196,6 +196,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         LineWithTrainEntity contextEntity = (LineWithTrainEntity) context;
         LineWithTrainEntity hostEntity = (LineWithTrainEntity) host;
         LineWithTrainFormStationTrainRelationProcessTask task = new LineWithTrainFormStationTrainRelationProcessTask(c, hostEntity, null);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after2(c, context, host, task));
         c.launch(task);
     }
@@ -237,6 +238,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         AreaWithStationEntity contextEntity = (AreaWithStationEntity) context;
         StationEntity hostEntity = (StationEntity) host;
         StationAreaStationFlowExchangeProcessTask task = new StationAreaStationFlowExchangeProcessTask(c, hostEntity, 0.0D, 0.0D, contextEntity.getArea());
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after5(c, context, host, task));
         c.launch(task);
     }
@@ -294,6 +296,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         LineWithTrainEntity contextEntity = (LineWithTrainEntity) context;
         LineWithTrainEntity hostEntity = (LineWithTrainEntity) host;
         LineWithTrainFormSectionTrainRelationProcessTask task = new LineWithTrainFormSectionTrainRelationProcessTask(c, hostEntity, null);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after10(c, context, host, task));
         c.launch(task);
     }
@@ -315,6 +318,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         LineWithTrainEntity contextEntity = (LineWithTrainEntity) context;
         LineWithTrainEntity hostEntity = (LineWithTrainEntity) host;
         LineWithTrainFormStationTrainRelationProcessTask task = new LineWithTrainFormStationTrainRelationProcessTask(c, hostEntity, null);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after11(c, context, host, task));
         c.launch(task);
     }
@@ -336,6 +340,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         LineWithTrainEntity contextEntity = (LineWithTrainEntity) context;
         TrainEntity hostEntity = (TrainEntity) host;
         TrainSectionRunProcessTask task = new TrainSectionRunProcessTask(c, hostEntity, contextEntity.getCurrentRunningRelation(), contextEntity.getTrainMileageOnLine(), contextEntity.isAlongIncreasingMileage());
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after12(c, context, host, task));
         c.launch(task);
     }
@@ -357,6 +362,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         LineWithTrainEntity contextEntity = (LineWithTrainEntity) context;
         TrainEntity hostEntity = (TrainEntity) host;
         TrainSectionRunProcessTask task = new TrainSectionRunProcessTask(c, hostEntity, contextEntity.getCurrentRunningRelation(), contextEntity.getTrainMileageOnLine(), contextEntity.isAlongIncreasingMileage());
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after13(c, context, host, task));
         c.launch(task);
     }
@@ -389,6 +395,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         SectionWithEndStationEntity contextEntity = (SectionWithEndStationEntity) context;
         MetroSectionEntity hostEntity = (MetroSectionEntity) host;
         MetroSectionStationSectionFlowExchangeProcessTask task = new MetroSectionStationSectionFlowExchangeProcessTask(c, hostEntity, contextEntity.getFlowCoeff(), contextEntity.getJunctionFloorElevation(), 0.0D, contextEntity.getStation(), 0.0D, contextEntity.getEffectiveFlowWidth());
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after15(c, context, host, task));
         c.launch(task);
     }
@@ -419,6 +426,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         Scene1Entity contextEntity = (Scene1Entity) context;
         Scene1Entity hostEntity = (Scene1Entity) host;
         Scene12TurnNoIntoYesProcessTask task = new Scene12TurnNoIntoYesProcessTask(c, hostEntity, false);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after17(c, context, host, task));
         c.launch(task);
     }
@@ -452,6 +460,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         Scene1Entity contextEntity = (Scene1Entity) context;
         Scene1Entity hostEntity = (Scene1Entity) host;
         Scene14CreateObjectTurnYesIntoNoProcessTask task = new Scene14CreateObjectTurnYesIntoNoProcessTask(c, hostEntity, false);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after19(c, context, host, task));
         c.launch(task);
     }
@@ -626,6 +635,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         RainfallAffectedAreaEntity contextEntity = (RainfallAffectedAreaEntity) context;
         RainfallEntity hostEntity = (RainfallEntity) host;
         RainfallRainfallProcessTask task = new RainfallRainfallProcessTask(c, hostEntity, overrides != null && overrides.get("雨量序列") != null ? (Map<Long, Double>) overrides.get("雨量序列") : contextEntity.getRainfallSeries(), 0.0D, 0.0D);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after35(c, context, host, task));
         return task;
     }
@@ -650,6 +660,7 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         RainfallAffectedAreaEntity contextEntity = (RainfallAffectedAreaEntity) context;
         AreaEntity hostEntity = (AreaEntity) host;
         AreaComputeRainfallCatchmentProcessTask task = new AreaComputeRainfallCatchmentProcessTask(c, hostEntity, overrides != null && overrides.get("当前雨强") != null ? GromaValues.toDouble(overrides.get("当前雨强")) : contextEntity.getCurrentRainIntensity(), 0.0D, 0.0D);
+        task.setWiringContext(contextEntity);
         task.setCompletionHook(() -> after36(c, context, host, task));
         return task;
     }
@@ -923,6 +934,52 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
     public GromaProcessTask newProcess(String defKey, GromaWorldContext ctx, BaseSimEntity host,
             Map<String, Object> args) {
         return ProcessCatalog.newTask(defKey, ctx, host, args);
+    }
+
+    /**
+     * 按定义键与接线上下文类型重挂输出影响回写钩子（存档续跑专用）
+     */
+    @Override
+    public void reattachWiringHook(String defKey, GromaWorldContext ctx, BaseSimEntity context,
+            BaseSimEntity host, GromaProcessTask task) {
+        if ("dv:designView_tOSCSMGoda2sHYuuDqN".equals(defKey) && context instanceof LineWithTrainEntity) {
+            task.setCompletionHook(() -> after2(ctx, context, host, (LineWithTrainFormStationTrainRelationProcessTask) task));
+            return;
+        }
+        if ("dv:designView_xmjSEU4SGv2otlq6mLP".equals(defKey) && context instanceof AreaWithStationEntity) {
+            task.setCompletionHook(() -> after5(ctx, context, host, (StationAreaStationFlowExchangeProcessTask) task));
+            return;
+        }
+        if ("dv:designView_z02AJALkr13QaoAQd4l".equals(defKey) && context instanceof LineWithTrainEntity) {
+            task.setCompletionHook(() -> after10(ctx, context, host, (LineWithTrainFormSectionTrainRelationProcessTask) task));
+            return;
+        }
+        if ("dv:designView_XLrKPtiJlmUbySIChuF".equals(defKey) && context instanceof LineWithTrainEntity) {
+            task.setCompletionHook(() -> after12(ctx, context, host, (TrainSectionRunProcessTask) task));
+            return;
+        }
+        if ("dv:designView_5mX6EkRtocaf9rXbKu1".equals(defKey) && context instanceof SectionWithEndStationEntity) {
+            task.setCompletionHook(() -> after15(ctx, context, host, (MetroSectionStationSectionFlowExchangeProcessTask) task));
+            return;
+        }
+        if ("dv:designView_2WLvrJyBv6htmVscnRk".equals(defKey) && context instanceof Scene1Entity) {
+            task.setCompletionHook(() -> after17(ctx, context, host, (Scene12TurnNoIntoYesProcessTask) task));
+            return;
+        }
+        if ("dv:designView_miDwXHXHR407mRDMPzO".equals(defKey) && context instanceof Scene1Entity) {
+            task.setCompletionHook(() -> after19(ctx, context, host, (Scene14CreateObjectTurnYesIntoNoProcessTask) task));
+            return;
+        }
+        if ("dv:designView_fjlFgY29HmzqjbmHxYC".equals(defKey) && context instanceof RainfallAffectedAreaEntity) {
+            task.setCompletionHook(() -> after35(ctx, context, host, (RainfallRainfallProcessTask) task));
+            return;
+        }
+        if ("dv:designView_aroqnVQzhKVnM1h7wPt".equals(defKey) && context instanceof RainfallAffectedAreaEntity) {
+            task.setCompletionHook(() -> after36(ctx, context, host, (AreaComputeRainfallCatchmentProcessTask) task));
+            return;
+        }
+        // 无输出影响接线或非接线启动（手动/子过程）的过程不需要回写钩子
+
     }
 
     @Override

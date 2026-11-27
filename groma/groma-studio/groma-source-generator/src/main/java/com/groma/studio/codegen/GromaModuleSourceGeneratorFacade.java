@@ -119,6 +119,10 @@ public final class GromaModuleSourceGeneratorFacade {
                 sourceMap.indexJavaSource(entry.getKey(), entry.getValue());
             }
         }
+        // 未索引文件进诊断流（plan.warnings() 是不可变拷贝，走 PlanModel.diagnostic 汇聚）
+        for (String unindexed : sourceMap.unindexedFiles()) {
+            model.diagnostic("[SOURCEMAP] " + unindexed);
+        }
         return bundle;
     }
 

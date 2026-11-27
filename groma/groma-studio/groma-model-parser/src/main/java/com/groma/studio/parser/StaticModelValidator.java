@@ -95,9 +95,11 @@ public final class StaticModelValidator {
                 }
                 String pairKey = edge.sourceCellId() + "->" + edge.targetCellId() + ":" + edge.relationType();
                 if (!sameDirPairs.add(pairKey) && !"fixed".equals(edge.relationType())) {
+                    // WARNING（2026-11-27 模型 2 真机实证降级）：画布重复同向连线是数据清洁度问题，
+                    // 解析器按 NextIR equals 去重后语义无损（单次激活），阻断出码属过度拦截
                     issues.add(new ValidationIssue(
-                            "VAL-009", "标准 10.1.3", Severity.ERROR, edge.cellId(), edge.relationType(),
-                            "同一视图内相同起止节点间存在重复的同向关系: " + pairKey));
+                            "VAL-009", "标准 10.1.3", Severity.WARNING, edge.cellId(), edge.relationType(),
+                            "同一视图内相同起止节点间存在重复的同向关系（解析器已去重，语义无损）: " + pairKey));
                 }
             }
             GraphCycleAndDepthGuard.detectCycleOrExcessDepth("CONTROL", controlEdges, 64)

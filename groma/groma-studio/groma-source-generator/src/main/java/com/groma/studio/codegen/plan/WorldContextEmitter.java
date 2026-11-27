@@ -69,7 +69,20 @@ public final class WorldContextEmitter {
         init.addStatement("this.self = new $T($S)", type.entity(), "scene:" + type.typeId());
         for (SceneMember member : scene.members()) {
             CodeBlock value = value(member.member().placeholder(), member.value());
-            init.addCode("// $L = $L\n", member.member().zhName(), describe(member.value()));
+            // 注释单行化 + $ 转义：场景成员值可能是多段中文叙述（模型 2 实证），直接内插会把
+            // 换行后的文本变成裸 Java 语句、$ 会被 JavaPoet 当格式符（模型 2 153 个编译错误的根因）
+            String comment = describe(member.value()).replaceAll("\\s*\\r?\\n\\s*", " ").replace("$", "＄");
+            init.addCode("// $L = $L\n", member.member().zhName(), comment);
+            // 场景成员声明为集合而画布绑定单对象（模型 3 实证）：包成单元素受观察列表再写入
+            if (PlanModel.KIND_LIST.equals(member.member().kind())
+                    && member.value() instanceof CompilePlanIR.RefSpec) {
+                // backing 必须可变（List.of 不可变，后续 add/remove 会 UOE）
+                init.addStatement("this.self.$L(new $T<>(new $T<>($T.of($L)), this.collectionSink(this.self, $S)), this)",
+                        member.member().setterCtx(), PlanModel.OBSERVABLE_LIST, java.util.ArrayList.class,
+                        java.util.List.class, value, member.member().tokenId());
+                // addRootMember 只收单实体；集合成员的元素由实例构建自行注册
+                continue;
+            }
             init.addStatement("this.self.$L($L, this)", member.member().setterCtx(), value);
             if (member.member().isRef() && member.value() instanceof CompilePlanIR.RefSpec ref) {
                 init.addStatement("addRootMember($S, this.self.$L())", member.member().tokenId(), member.member().getter());

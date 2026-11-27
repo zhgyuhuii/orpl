@@ -68,6 +68,8 @@ public final class PlanModel {
     public static final ClassName BOXED_BOOLEAN = ClassName.get(Boolean.class);
     public static final ClassName GROMA_META = ClassName.get("com.groma.base.common.annotation", "GromaMeta");
     public static final ClassName SCHEMA = ClassName.get("io.swagger.v3.oas.annotations.media", "Schema");
+    /** 受观察集合视图（方案 C：集合成员增删接双视角事件总线） */
+    public static final ClassName OBSERVABLE_LIST = ClassName.get("com.groma.base.common.container", "ObservableEntityList");
     public static final ClassName OPERATION = ClassName.get("io.swagger.v3.oas.annotations", "Operation");
     public static final ClassName TAG = ClassName.get("io.swagger.v3.oas.annotations.tags", "Tag");
 
@@ -301,6 +303,8 @@ public final class PlanModel {
     public final String modelCode;
     public final String moduleDir;
     public final String basePkg;
+    /** R05 集合代理定义按类型分组（代理图元实体 id 消费见 ModelLayerEmitter 集合事件汇） */
+    public Map<String, List<CompilePlanIR.ProxyDefIR>> proxiesByType;
     public final String modelId;
     public final String modelLabel;
     public final String modelVersion;
@@ -443,6 +447,16 @@ public final class PlanModel {
                     shell.entity(), shell.readOnly(), shell.vo(), shell.service(), shell.serviceImpl(), own, all, parent));
         }
 
+        // R05 集合代理按所属类型分组（出码消费：集合事件汇同步发代理事件）
+        Map<String, List<CompilePlanIR.ProxyDefIR>> proxiesByType = new LinkedHashMap<>();
+        for (TypeDefIR type : plan.types()) {
+            if (type.proxies() == null || type.proxies().isEmpty()) {
+                continue;
+            }
+            proxiesByType.put(type.entityId(), type.proxies());
+        }
+        this.proxiesByType = Map.copyOf(proxiesByType);
+
         // 3. 过程定义
         for (ProcessDefIR def : plan.processDefs()) {
             ProcInfo proc = resolveProc(def);
@@ -501,6 +515,92 @@ public final class PlanModel {
                 member.containerType(), member.fieldType(), member.defaultValue(), member.initialState(), member.unit(), bit);
     }
 
+    /**
+     * 过程体写用例扫描（方案 E 只读绑定的让位条件）：返回在过程体内被当作写入目标或子过程宿主的形参 id。
+     * 写入目标 = 回写实参（node.writes）与后置动作目标（postActions）里以该形参为根的操作数；
+     * 宿主 = 调用节点把该形参传给带宿主对象的子过程（子过程会写 self 成员）。
+     */
+    private final Map<String, Set<String>> writableParamCache = new java.util.HashMap<>();
+    private final Set<String> writableParamInProgress = new HashSet<>();
+
+    /**
+     * 形参“可写性”传递闭包（方案 E 只读绑定的让位条件）：返回该过程体内会被写入的形参 id 集合。
+     * 直接写 = 回写实参（node.writes）与后置动作目标（postActions）里以该形参为根的操作数；
+     * 传递写 = 形参经调用线实参流入可写子过程形参、或作为宿主（node.host）传入任何子过程
+     * （子过程会写自己的 self 成员）。闭包按被调过程递归（备忘 + 环路退化为直接写集合），
+     * 保证调用点两侧形参类型判定一致——否则调用方传 ReadOnly、被调方收实体会编译失败。
+     */
+    private Set<String> writableParamIds(ProcessDefIR def) {
+        Set<String> memo = writableParamCache.get(def.defKey());
+        if (memo != null) {
+            return memo;
+        }
+        if (!writableParamInProgress.add(def.defKey())) {
+            // 调用环：退化为只算直接写，避免无限递归（环上传入形参保持实体类型，宁保守勿错绑）
+            return directWritableParams(def);
+        }
+        try {
+            Set<String> ids = directWritableParams(def);
+            Map<String, ProcessDefIR> byKey = new java.util.HashMap<>();
+            for (ProcessDefIR any : plan.processDefs()) {
+                byKey.put(any.defKey(), any);
+            }
+            for (NodeIR node : def.nodes()) {
+                if (node.calleeDefKey() == null || node.calleeDefKey().isEmpty()) {
+                    continue;
+                }
+                ProcessDefIR callee = byKey.get(node.calleeDefKey());
+                if (callee == null) {
+                    continue;
+                }
+                Set<String> calleeWritable = writableParamIds(callee);
+                // 宿主形参：被调过程会写自己的 self 成员，一律视为可写
+                if (node.host() != null) {
+                    markRootParam(node.host(), ids);
+                }
+                for (CompilePlanIR.ArgBindingIR binding : node.inputs()) {
+                    boolean flowsToWritable = callee.params() == null
+                            ? calleeWritable.isEmpty()
+                            : callee.params().stream().anyMatch(p -> p.zhName().equals(binding.argName())
+                                    && calleeWritable.contains(p.entityId()));
+                    if (flowsToWritable) {
+                        markRootParam(binding.operand(), ids);
+                    }
+                }
+            }
+            writableParamCache.put(def.defKey(), ids);
+            return ids;
+        } finally {
+            writableParamInProgress.remove(def.defKey());
+        }
+    }
+
+    /** 操作数根若为形参则记入集合 */
+    private static void markRootParam(CompilePlanIR.OperandIR op, Set<String> ids) {
+        while (op instanceof CompilePlanIR.MemberPathIR path) {
+            op = path.root();
+        }
+        if (op instanceof CompilePlanIR.ParamIR p) {
+            ids.add(p.entityId());
+        }
+    }
+
+    /** 直接写扫描（回写目标 / 后置动作目标落在形参上） */
+    private Set<String> directWritableParams(ProcessDefIR def) {
+        Set<String> ids = new HashSet<>();
+        for (NodeIR node : def.nodes()) {
+            for (CompilePlanIR.ArgBindingIR binding : node.writes()) {
+                markRootParam(binding.operand(), ids);
+            }
+            for (CompilePlanIR.PostIR post : node.postActions()) {
+                if (post.target() != null) {
+                    markRootParam(post.target(), ids);
+                }
+            }
+        }
+        return ids;
+    }
+
     private ProcInfo resolveProc(ProcessDefIR def) {
         TypeInfo owner = types.get(def.ownerTypeId());
         String label = switch (def.ownerKind()) {
@@ -515,11 +615,21 @@ public final class PlanModel {
         // 服务方法名按宿主类型去重（同一类型下可以有多个同名过程，如场景里的多个“过程1”）
         String methodName = naming.resolveFieldName("method:" + def.ownerTypeId(), "method:" + def.entityId(), "", def.zhName(), null, false);
 
+        // R16/R17 只读契约绑定（方案 E 收割）：IN 方向的对象引用形参解析为 ReadOnly 视图。
+        // 绑定前做过程体写用例扫描：回写目标 / 后置动作目标 / 子过程宿主落在该形参上时，契约让位（保持实体类型），
+        // 记诊断说明未绑定——真实语料的“区间行驶”等过程经 IN 形参回写关联成员，硬绑定会破坏生成代码编译。
+        Set<String> writableParams = writableParamIds(def);
         List<ParamSlot> params = new ArrayList<>();
         for (PortIR port : def.params()) {
             String placeholder = port.javaType() == null || port.javaType().isEmpty() ? GromaTypes.OBJECT : port.javaType();
             String kind = kindOf(placeholder);
             TypeName type = resolve(placeholder);
+            if ("IN".equals(port.direction()) && KIND_REF.equals(kind) && !writableParams.contains(port.entityId())) {
+                TypeInfo shell = typeOf(type);
+                if (shell != null) {
+                    type = shell.readOnly();
+                }
+            }
             boolean bool = KIND_BASE.equals(kind) && type == TypeName.BOOLEAN;
             String field = naming.resolveFieldName(def.defKey(), "param:" + port.entityId(), "", port.zhName(), null, bool);
             params.add(new ParamSlot(port.entityId(), port.zhName(), port.direction(), port.nonnull(), placeholder, type,
@@ -690,7 +800,8 @@ public final class PlanModel {
             return null;
         }
         for (TypeInfo info : types.values()) {
-            if (info.entity().equals(cn)) {
+            // ReadOnly 视图（方案 E 的 IN 形参类型）也归位到类型外壳：成员寻址写目标解析依赖它
+            if (info.entity().equals(cn) || info.readOnly().equals(cn)) {
                 return info;
             }
         }

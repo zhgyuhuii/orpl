@@ -1,6 +1,7 @@
 package com.groma.models.emergencydeduction.model.entity;
 
 import com.groma.base.common.annotation.GromaMeta;
+import com.groma.base.common.container.ObservableEntityList;
 import com.groma.base.engine.BaseSimEntity;
 import com.groma.base.engine.GromaMemberMeta;
 import com.groma.base.engine.GromaValues;
@@ -11,6 +12,7 @@ import java.lang.Object;
 import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -48,7 +50,7 @@ public class TrainPassingEntity extends BaseSimEntity implements TrainPassingRea
             zhName = "通行列车",
             kind = "FIELD"
     )
-    private List<TrainEntity> passingTrain = new java.util.ArrayList<>(16);
+    private List<TrainEntity> passingTrain = new ObservableEntityList<>(new ArrayList<>(16), null);
 
     /**
      * 通行区间（方圆对象成员原名：通行区间）
@@ -98,7 +100,7 @@ public class TrainPassingEntity extends BaseSimEntity implements TrainPassingRea
             return;
         }
         List<TrainEntity> before = this.passingTrain;
-        this.passingTrain = value;
+        this.passingTrain = ObservableEntityList.observed(value, ctx.collectionSink(this, "b1GaRdiCLb2mOttmees"));
         markDirty(0);
         ctx.onMemberChanged(this, "b1GaRdiCLb2mOttmees", before, value);
     }

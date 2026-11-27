@@ -337,9 +337,36 @@ public abstract class OperandRenderer {
         if (value == null) {
             return CodeBlock.of(model.defaultLiteral(target, targetKind));
         }
-        if (target instanceof com.palantir.javapoet.ParameterizedTypeName
+        if (target instanceof com.palantir.javapoet.ParameterizedTypeName pt
                 && !(value.type() instanceof com.palantir.javapoet.ParameterizedTypeName)) {
+            // 集合形参收到标量实参（模型 2 实证）：出码原样必然类型不匹配，回退形参默认值并记诊断
+            if (value.type() == TypeName.BOOLEAN || value.type() == TypeName.DOUBLE || value.type() == TypeName.LONG
+                    || "java.lang.String".equals(String.valueOf(value.type()))
+                    || value.type().toString().startsWith("java.lang.String")) {
+                model.diagnostic((proc == null ? "" : proc.zhName() + "：") + "集合形参收到标量实参（来源 "
+                        + value.type() + "），已回退默认值");
+                return CodeBlock.of(model.defaultLiteral(target, targetKind));
+            }
             return value.code();
+        }
+        if (target instanceof com.palantir.javapoet.ParameterizedTypeName pt
+                && value.type() instanceof com.palantir.javapoet.ParameterizedTypeName vt && !pt.equals(vt)) {
+            // 集合元素类型不同（模型 2 实证：List<子类> 实参传 List<父类> 形参）：
+            // 元素同源（实参元素是形参元素的后代）时包一层新集合完成协变转换，无关系则降级默认值
+            TypeName targetElem = pt.typeArguments().isEmpty() ? null : pt.typeArguments().get(0);
+            TypeName valueElem = vt.typeArguments().isEmpty() ? null : vt.typeArguments().get(0);
+            if (PlanModel.isEntity(targetElem) && PlanModel.isEntity(valueElem)) {
+                TypeInfo tInfo = model.typeOf(targetElem);
+                TypeInfo vInfo = model.typeOf(valueElem);
+                for (TypeInfo t = vInfo; t != null && tInfo != null; t = t.parent()) {
+                    if (t == tInfo) {
+                        return CodeBlock.of("new $T<>($L)", java.util.ArrayList.class, value.code());
+                    }
+                }
+                model.diagnostic((proc == null ? "" : proc.zhName() + "：") + "集合形参元素类型与实参不匹配（"
+                        + valueElem + " → " + targetElem + "），已回退默认值");
+                return CodeBlock.of(model.defaultLiteral(target, targetKind));
+            }
         }
         TypeName source = value.type();
         if (target.isBoxedPrimitive()) {
@@ -412,6 +439,14 @@ public abstract class OperandRenderer {
             MemberInfo member = ownerType == null ? null : ownerType.member(lastId);
             if (member == null) {
                 model.diagnostic((proc == null ? "" : proc.zhName() + "：") + "写出目标的成员 " + lastId + " 无法静态解析，已跳过");
+                return CodeBlock.of("");
+            }
+            // 集合成员收到非集合来源（模型 2 实证：画布把文本赋给 List 成员）：类型不匹配的赋值
+            // 若原样出码必编译失败——按“模块始终可编译”红线降级为注释并记诊断
+            if ((PlanModel.KIND_LIST.equals(member.kind()) || PlanModel.KIND_MAP.equals(member.kind()))
+                    && !(value.type() instanceof com.palantir.javapoet.ParameterizedTypeName)) {
+                model.diagnostic((proc == null ? "" : proc.zhName() + "：") + "把非集合值赋给集合成员 " + lastId
+                        + "（来源 " + value.type() + "），已降级注释跳过");
                 return CodeBlock.of("");
             }
             return CodeBlock.of("$L.$L($L, $L)", base.code(), member.setterCtx(), coerce(value, member.type(), member.kind()), ctxRef());

@@ -98,8 +98,23 @@ public final class AstSourceMap {
                 .orElse("");
     }
 
+    /** 静态索引失败的生成源文件（含失败原因首行）——索引是 DAP 探针映射的增强，失败不阻断出码 */
+    private final java.util.List<String> unindexedFiles = new java.util.ArrayList<>();
+
+    public java.util.List<String> unindexedFiles() {
+        return java.util.List.copyOf(unindexedFiles);
+    }
+
     public void indexJavaSource(String relativeFilePath, String javaSourceCode) {
-        CompilationUnit cu = StaticJavaParser.parse(javaSourceCode);
+        CompilationUnit cu;
+        try {
+            cu = StaticJavaParser.parse(javaSourceCode);
+        } catch (RuntimeException ex) {
+            // 个别生成文件含无法静态解析的内容（如画布代码框转译残留的全角标点，模型 2 实证）：
+            // 该文件的探针映射缺失，但不阻断整条出码流水线——ECJ 编译仍会给出精确诊断
+            unindexedFiles.add(relativeFilePath + " <- " + String.valueOf(ex.getMessage()).lines().findFirst().orElse(""));
+            return;
+        }
         // DAP 源码级探针映射：execNode 里 fireLineProbe("画布图元id") 调用行 → 图元 id
         cu.findAll(com.github.javaparser.ast.expr.MethodCallExpr.class).forEach(call -> {
             if ("fireLineProbe".equals(call.getNameAsString()) && !call.getArguments().isEmpty()

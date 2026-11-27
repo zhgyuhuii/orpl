@@ -10,11 +10,33 @@ import java.util.function.BiConsumer;
  */
 public final class ObservableEntityList<T> extends AbstractList<T> {
 
-    private final List<T> delegate = new ArrayList<>(16);
-    private final BiConsumer<String, T> eventQueueSink;
+    private final List<T> delegate;
+    private BiConsumer<String, Object> eventQueueSink;
 
     public ObservableEntityList(BiConsumer<String, T> eventQueueSink) {
-        this.eventQueueSink = eventQueueSink != null ? eventQueueSink : (code, item) -> {};
+        this(new ArrayList<>(16), eventQueueSink);
+    }
+
+    /**
+     * 以既有列表为后備的受观察视图（方案 C 收割）：生成实体把集合字段接到本视图后，
+     * 过程代码经 getter 的 add/remove 会同时投递持有方（ma/mx）与元素（am/xm）双视角事件。
+     */
+    @SuppressWarnings("unchecked")
+    public ObservableEntityList(List<T> backing, BiConsumer<String, T> eventQueueSink) {
+        this.delegate = backing;
+        this.eventQueueSink = eventQueueSink == null ? (code, item) -> {}
+                : (BiConsumer<String, Object>) eventQueueSink;
+    }
+
+    /** 已是受观察列表则换绑事件汇后返回（归属随新持有方走），否则包一层带事件的委托视图 */
+    @SuppressWarnings("unchecked")
+    public static <T> ObservableEntityList<T> observed(List<T> backing, BiConsumer<String, T> eventQueueSink) {
+        if (backing instanceof ObservableEntityList<T> o) {
+            o.eventQueueSink = eventQueueSink == null ? (code, item) -> {}
+                    : (BiConsumer<String, Object>) eventQueueSink;
+            return o;
+        }
+        return new ObservableEntityList<>(backing, eventQueueSink);
     }
 
     @Override
@@ -38,5 +60,14 @@ public final class ObservableEntityList<T> extends AbstractList<T> {
         T removed = delegate.remove(index);
         eventQueueSink.accept("mx", removed);
         return removed;
+    }
+
+    @Override
+    public T set(int index, T element) {
+        T replaced = delegate.set(index, element);
+        // 位置替换 = 移出旧元素 + 加入新元素（双视角事件随 add/remove 一致派发）
+        eventQueueSink.accept("mx", replaced);
+        eventQueueSink.accept("ma", element);
+        return replaced;
     }
 }

@@ -98,4 +98,14 @@ public interface GromaModuleRuntime {
                                            Map<String, Object> argOverrides) {
         return null;
     }
+
+    /**
+     * 存档续跑重建在途顶层任务后，按原接线上下文重挂输出影响回写钩子（T1.5 分叉根因二：在途任务对齐）。
+     * 触发接线启动的过程成功后要向 context 实体回写 IN_OUT/OUT 影响成员（生成的 afterN）；
+     * 该钩子是接线侧闭包，任务重建时必须由生成运行时按 defKey 重挂，否则续跑后的过程成功不回写成员。
+     * context 为存档记录的接线上下文实例（无接线上下文时为 null，本方法为空实现不挂任何钩子）。
+     */
+    default void reattachWiringHook(String defKey, GromaWorldContext ctx, BaseSimEntity context,
+                                    BaseSimEntity host, GromaProcessTask task) {
+    }
 }

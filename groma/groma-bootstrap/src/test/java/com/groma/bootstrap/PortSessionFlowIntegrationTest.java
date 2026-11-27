@@ -48,7 +48,8 @@ class PortSessionFlowIntegrationTest {
             VersionPinnedHotSwapManager hotSwap = new VersionPinnedHotSwapManager(new EcjInMemoryCompiler(),
                     new AtomicBytecodeCache(Files.createTempDirectory("groma-bc"), "ecj", "test"),
                     PortSessionFlowIntegrationTest.class.getClassLoader());
-            var registry = new com.groma.bootstrap.pipeline.GromaModelRegistry(sessions, hotSwap, nullRegistrar());
+            var registry = new com.groma.bootstrap.pipeline.GromaModelRegistry(sessions, hotSwap, nullRegistrar(),
+                    nullScriptIoExecutor());
             ModelPipelineService pipeline = new ModelPipelineService(hotSwap, new WorkspaceSyncService(),
                     new JavacParityVerifier(), registry, workspace.toString());
             var port = new com.groma.bootstrap.pipeline.GromaMcpEnginePortImpl(sessions, registry,
@@ -112,6 +113,18 @@ class PortSessionFlowIntegrationTest {
             }
             @Override public com.groma.base.mcp.registry.ModelToolRegistrar getObject() {
                 throw new IllegalStateException("单测未装配 ModelToolRegistrar");
+            }
+        };
+    }
+
+    /** 方案 F 收割后 registry 需要脚本执行器 ObjectProvider：单测用空装配（Python 桥路径不在本测覆盖内） */
+    private static org.springframework.beans.factory.ObjectProvider<com.groma.base.engine.GromaWorldContext.ExternalScriptIoExecutor> nullScriptIoExecutor() {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override public com.groma.base.engine.GromaWorldContext.ExternalScriptIoExecutor getIfAvailable() {
+                return null;
+            }
+            @Override public com.groma.base.engine.GromaWorldContext.ExternalScriptIoExecutor getObject() {
+                throw new IllegalStateException("单测未装配 ExternalScriptIoExecutor");
             }
         };
     }

@@ -1,6 +1,7 @@
 package com.groma.models.emergencydeduction.model.entity;
 
 import com.groma.base.common.annotation.GromaMeta;
+import com.groma.base.common.container.ObservableEntityList;
 import com.groma.base.engine.BaseSimEntity;
 import com.groma.base.engine.GromaMemberMeta;
 import com.groma.base.engine.GromaValues;
@@ -11,6 +12,7 @@ import java.lang.Object;
 import java.lang.Override;
 import java.lang.String;
 import java.lang.SuppressWarnings;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -61,7 +63,7 @@ public class UndergroundInflowEntity extends BaseSimEntity implements Undergroun
             zhName = "进水区间",
             kind = "FIELD"
     )
-    private List<MetroSectionEntity> inflowSection = new java.util.ArrayList<>(16);
+    private List<MetroSectionEntity> inflowSection = new ObservableEntityList<>(new ArrayList<>(16), null);
 
     /**
      * @param instanceId 实例标识（命名实例取画布对象实体 id，运行期生成的对象由世界上下文分配）
@@ -116,7 +118,7 @@ public class UndergroundInflowEntity extends BaseSimEntity implements Undergroun
             return;
         }
         List<MetroSectionEntity> before = this.inflowSection;
-        this.inflowSection = value;
+        this.inflowSection = ObservableEntityList.observed(value, ctx.collectionSink(this, "aeMBq8a9ECoL0Cubhuc"));
         markDirty(1);
         ctx.onMemberChanged(this, "aeMBq8a9ECoL0Cubhuc", before, value);
     }

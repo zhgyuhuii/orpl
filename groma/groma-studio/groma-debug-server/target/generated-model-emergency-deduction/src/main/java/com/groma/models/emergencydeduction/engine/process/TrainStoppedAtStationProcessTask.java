@@ -143,7 +143,7 @@ public final class TrainStoppedAtStationProcessTask extends GromaProcessTask {
                     activate(4);
                 }
                 if (frame.getOut3()) {
-                    activate(5);
+                    activateAfter(5, 1L);
                 }
             }
             case 4 -> {

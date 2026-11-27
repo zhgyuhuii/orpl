@@ -53,13 +53,14 @@ final class LeafBodyEmitter {
                     param.zhName(), "this." + param.field(), "this." + param.setter()));
         }
         for (LocalSlot local : proc.locals()) {
+            // 读表达式带调用括号：裸中文成员/局部量读取改写后必须是方法调用（模型 2 实证链式读取缺括号）
             bindings.put(local.zhName(), new ProcessCodeAstTranslator.VarBinding(
-                    local.zhName(), "frame.get" + local.cap(), "frame.set" + local.cap()));
+                    local.zhName(), "frame.get" + local.cap() + "()", "frame.set" + local.cap()));
         }
         if (proc.owner() != null) {
             for (MemberInfo member : proc.owner().allMembers()) {
                 bindings.put(member.zhName(), new ProcessCodeAstTranslator.VarBinding(
-                        member.zhName(), "self." + member.getter(), "self." + member.setterCtx()));
+                        member.zhName(), "self." + member.getter() + "()", "self." + member.setterCtx()));
             }
         }
         ProcessCodeAstTranslator.TranslationResult translated;
@@ -106,7 +107,14 @@ final class LeafBodyEmitter {
             return outcome;
         }
         String code = translated.javaMethodBody().toString();
-        String unsupported = unsupportedMemberAccess(model, proc, code);
+        String unsupported;
+        try {
+            unsupported = unsupportedMemberAccess(model, proc, code);
+        } catch (RuntimeException ex) {
+            // 画布代码框内容转译后仍不是可解析的 Java（如全角标点/残余 Python 语句，模型 2 实证）：
+            // 按既有语义降级为运行期失败分支并保留原始代码注释，不让整条流水线崩掉
+            unsupported = "静态校验无法解析（" + String.valueOf(ex.getMessage()).lines().findFirst().orElse("") + "）";
+        }
         if (unsupported != null) {
             model.diagnostic("过程 " + proc.zhName() + " 的手写代码" + unsupported + "，已降级为运行期失败分支");
             outcome.body.addStatement("// 原始手写代码: $S", oneLine(raw));
@@ -230,10 +238,16 @@ final class LeafBodyEmitter {
                     return true;
                 }
             }
+            // 基类实例方法之外，实体/只读视图类自身没有其他成员方法可调（块 24 收割口径）
             return hasMethod(model, PlanModel.BASE_ENTITY, method, argCount);
         }
         if (model.enumOf(receiver) != null) {
             return argCount == 0 && ("getZhLabel".equals(method) || "name".equals(method) || "ordinal".equals(method));
+        }
+        // 生成模型自身的类（运行帧 BO / 只读视图 / 服务 / 过程任务等）不在生成器类路径上，
+        // Class.forName 必然失败——按生成包前缀放行，杜绝“误杀合法手写代码”整段降级（块 24 收割）
+        if (cn.canonicalName().startsWith(model.basePkg)) {
+            return true;
         }
         try {
             Class<?> clazz = Class.forName(cn.canonicalName(), false,

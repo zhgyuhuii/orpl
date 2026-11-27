@@ -121,8 +121,17 @@ public abstract class GromaProcessTask {
     /** 挂起到下一拍的回边激活 */
     private final LinkedHashSet<Integer> deferred = new LinkedHashSet<>();
     private long machineTick = Long.MIN_VALUE;
+    /** 存档续跑标记：恢复现场已把在途子任务计入 waiting，子任务 linkToParent 时应认领而非再累加 */
+    private boolean runtimeImported;
+    private final Map<Integer, Integer> restoredWaitingUnclaimed = new HashMap<>();
     private final LinkedHashMap<Integer, Integer> waiting = new LinkedHashMap<>();
     private final Map<Integer, Boolean> nodeOk = new HashMap<>();
+    /** 子过程出口事件（R23 事件线 / R25R26 异常边消费用）：调用节点 pc → 最近一个已结束子过程的出口码 */
+    private final Map<Integer, String> childExit = new HashMap<>();
+    /** 本过程自身的出口事件：ok / pca（提前完成）/ pcd（超时完成），finishSuccess 时按 TIMING 上下限归类 */
+    private String exitEvent = "ok";
+    /** lastEnd 结束点收尾：实际用时不代表完整执行周期，豁免 pca/pcd 归类 */
+    private boolean finishedByLastEnd;
     private String lockedKey;
     private boolean twinCounted;
     private Runnable completionHook;
@@ -168,6 +177,13 @@ public abstract class GromaProcessTask {
     /** 启动前校验（R22 启动条件、非空输入守卫）；返回 false 则启动失败(psf) */
     protected boolean canStart() {
         return true;
+    }
+
+    /**
+     * 维持条件逐拍校验（R21 agent 关系，方案 D 收割）：耗时过程每个执行拍在推进前调用，
+     * 生成代码在条件不满足时走 abortByMaintainBroken（级联终止 + paa 事件）。默认无维持条件。
+     */
+    protected void checkMaintain() {
     }
 
     /** 过程成功收尾：回写双向形参、输出形参（R18/R19/R20），由生成代码实现 */
@@ -217,6 +233,47 @@ public abstract class GromaProcessTask {
     }
 
     /**
+     * 调用节点最近一个已结束子过程的出口事件码（R23 事件线 / R25R26 异常边消费，方案 D 收割）：
+     * ok 正常成功 / psf 启动或执行失败 / paa 被维持中断或级联终止 / pca 提前完成 / pcd 超时完成。
+     */
+    protected final String childExitEvent(int pc) {
+        return childExit.getOrDefault(pc, "ok");
+    }
+
+    private static String classifyExit(GromaProcessTask child) {
+        if (SUCCESS.equals(child.status)) {
+            return child.exitEvent;
+        }
+        if (ABORTED.equals(child.status)) {
+            return "paa";
+        }
+        return "psf";
+    }
+
+    /**
+     * lastEnd 结束点级联（方案 D 收割）：结束节点完成后立即终止本过程的在途旁路子任务
+     * （真级联：子任务置 ABORTED 收尾并释放单例锁/孪生计数，僵尸任务会锁死同类型单例并污染存档），
+     * 清空未走队列，置 WAIT4SUCCESS 让提交阶段即刻收尾（成功回写与钩子照常执行）。
+     */
+    protected final void finishWithLastEnd() {
+        for (GromaProcessTask child : List.copyOf(children)) {
+            if (!child.finished()) {
+                child.cancelCascade("lastEnd 结束点级联取消");
+            }
+        }
+        children.clear();
+        waiting.clear();
+        ready.clear();
+        deferred.clear();
+        timedDeferred.clear();
+        finishedByLastEnd = true;
+        exitEvent = "ok";
+        if (RUNNING.equals(status)) {
+            status = WAIT4SUCCESS;
+        }
+    }
+
+    /**
      * 调用子过程：瞬时上下文里同步跑完；耗时上下文里耗时子过程挂为子任务并在成功后续接本节点后继
      *
      * @return true 表示子过程已同步结束（成功或启动失败）；false 表示已挂起等待
@@ -228,6 +285,7 @@ public abstract class GromaProcessTask {
             // T1：父过程为瞬时（或正被同步驱动）时，子过程一律按瞬时算子同步执行
             subProcess.syncMode = true;
             nodeOk.put(pc, subProcess.runToCompletionSync());
+            childExit.put(pc, classifyExit(subProcess));
             return true;
         }
         children.add(subProcess);
@@ -235,6 +293,7 @@ public abstract class GromaProcessTask {
         if (!started || subProcess.finished()) {
             children.remove(subProcess);
             nodeOk.put(pc, SUCCESS.equals(subProcess.status));
+            childExit.put(pc, classifyExit(subProcess));
             return true;
         }
         waiting.merge(pc, 1, Integer::sum);
@@ -410,6 +469,7 @@ public abstract class GromaProcessTask {
             if (!ctx.tryLockProcess(lockedKey)) {
                 status = FAILED;
                 failReason = "单实例约束拒绝启动";
+                ctx.emitProcessEvent(this, "psf", failReason);
                 finishNow();
                 return false;
             }
@@ -425,6 +485,7 @@ public abstract class GromaProcessTask {
             if (!canStart()) {
                 status = FAILED;
                 failReason = "启动条件未满足";
+                ctx.emitProcessEvent(this, "psf", failReason);
                 finishNow();
                 return false;
             }
@@ -453,6 +514,18 @@ public abstract class GromaProcessTask {
         if (host != null && !host.isAlive()) {
             fail("宿主实例已消亡，过程无法继续执行");
             return;
+        }
+        // R21 维持条件逐拍校验（方案 D 收割）：只对运行中的耗时过程检查，中断即级联终止
+        if (!hasFlow() || flowEntered) {
+            try {
+                checkMaintain();
+            } catch (RuntimeException ex) {
+                fail(ex);
+                return;
+            }
+            if (finished()) {
+                return;
+            }
         }
         if (!children.isEmpty()) {
             for (GromaProcessTask child : List.copyOf(children)) {
@@ -550,6 +623,30 @@ public abstract class GromaProcessTask {
             return;
         }
         this.status = SUCCESS;
+        // R25/R26 出口归类（方案 D 收割）：实际用时超出 TIMING 上下限记 pcd/pca 并派发过程事件。
+        // lastEnd 提前收尾不参与归类（实际用时不代表完整执行周期）；未知时长单位安全跳过
+        if (!finishedByLastEnd && timing.timeConsuming() && timing.timeMax() != null) {
+            try {
+                long maxMs = com.groma.base.common.util.TimeUnitUtils.toMillis(timing.timeMax(), timing.timeUnit());
+                if (maxMs > 0L && elapsedMs > maxMs) {
+                    exitEvent = "pcd";
+                    ctx.emitProcessEvent(this, "pcd", "过程超时完成: " + elapsedMs + "ms > " + maxMs + "ms");
+                }
+            } catch (IllegalArgumentException unknownUnit) {
+                // 未知单位：跳过归类（不炸会话）
+            }
+        }
+        if (!finishedByLastEnd && "ok".equals(exitEvent) && timing.timeConsuming() && timing.timeMin() != null) {
+            try {
+                long minMs = com.groma.base.common.util.TimeUnitUtils.toMillis(timing.timeMin(), timing.timeUnit());
+                if (minMs > 0L && elapsedMs < minMs) {
+                    exitEvent = "pca";
+                    ctx.emitProcessEvent(this, "pca", "过程提前完成: " + elapsedMs + "ms < " + minMs + "ms");
+                }
+            } catch (IllegalArgumentException unknownUnit) {
+                // 未知单位：跳过归类（不炸会话）
+            }
+        }
         try {
             onSuccess();
             if (completionHook != null) {
@@ -587,6 +684,7 @@ public abstract class GromaProcessTask {
             }
             waiting.remove(pc);
             nodeOk.put(pc, SUCCESS.equals(child.status));
+            childExit.put(pc, classifyExit(child));
             if (SUCCESS.equals(child.status)) {
                 anySuccess = true;
                 try {
@@ -741,16 +839,60 @@ public abstract class GromaProcessTask {
     }
 
     /**
+     * 登记接线上下文对象（触发接线启动时的 context 实体）：顶层过程成功后的输出影响回写（afterN）
+     * 写的就是它。存档续跑重建任务时经 {@link #wiringContext()} 导出、由生成代码重挂 afterN 钩子
+     * （否则续跑后的在途过程成功时不回写成员——T1.5 分叉根因二：在途任务对齐）。
+     */
+    public final void setWiringContext(BaseSimEntity context) {
+        this.wiringContext = context;
+    }
+
+    private volatile BaseSimEntity wiringContext;
+
+    /** 触发接线启动时的 context 实体（手动启动/子过程为 null） */
+    public final BaseSimEntity wiringContext() {
+        return wiringContext;
+    }
+
+    /**
      * 存档续跑：把本任务重新挂回父过程的指定节点（恢复等待表计数），并让父过程把运行帧里的子任务句柄指回来
      */
     final void linkToParent(GromaProcessTask parentTask, int pc) {
         this.parent = parentTask;
         this.parentPc = pc;
         parentTask.children.add(this);
-        parentTask.waiting.merge(pc, 1, Integer::sum);
+        if (!parentTask.claimRestoredWaiting(pc)) {
+            // 父任务恢复现场没有为该节点预留计数（或已认领完）：按新建子任务累加
+            parentTask.waiting.merge(pc, 1, Integer::sum);
+        }
         this.status = RUNNING;
         this.flowEntered = true;
         parentTask.onChildRestored(pc, this);
+    }
+
+    /** 认领父任务恢复现场的等待计数：有未认领余量则扣减并返回 true（防止恢复后 waiting 双计卡死父过程） */
+    private boolean claimRestoredWaiting(int pc) {
+        Integer left = restoredWaitingUnclaimed.get(pc);
+        if (left != null && left > 0) {
+            restoredWaitingUnclaimed.put(pc, left - 1);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 存档续跑：把单实例锁键重新绑定到恢复的任务。锁本身已随 PROCESS_LOCK 关系恢复进锁表，
+     * 但 lockedKey 是 begin() 里的运行期字段、不随 exportRuntime 导出——不重绑则恢复的任务
+     * 结束时解不掉锁，同类型单例的新实例会永远被“单实例约束拒绝启动”（T1.5 分叉根因三）。
+     */
+    final void restoreSingletonLock() {
+        int singletonMode = timing.singletonMode();
+        if (timing.timeConsuming() && singletonMode != 0) {
+            lockedKey = singletonMode == 3
+                    ? defKey + "@type"
+                    : defKey + "@" + (host != null ? host.getInstanceId() : "global");
+            ctx.tryLockProcess(lockedKey);
+        }
     }
 
     /**
@@ -855,6 +997,10 @@ public abstract class GromaProcessTask {
                 nodeOk.put((int) toLong(e.getKey()), Boolean.TRUE.equals(e.getValue()));
             }
         }
+        // 恢复现场的等待计数视为“已含在途子任务”：子任务 linkToParent 时认领而非累加
+        this.runtimeImported = true;
+        this.restoredWaitingUnclaimed.clear();
+        this.restoredWaitingUnclaimed.putAll(this.waiting);
         Object slots = state.get("slots");
         if (slots instanceof Map<?, ?> map) {
             importSlots((Map<String, Object>) map);

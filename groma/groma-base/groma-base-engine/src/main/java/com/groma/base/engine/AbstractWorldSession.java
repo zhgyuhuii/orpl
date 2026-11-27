@@ -247,6 +247,16 @@ public abstract class AbstractWorldSession {
     }
 
     /**
+     * 存档装载前清空待派发事件队列（单写者线程，由 GromaWorldContext.enterArchiveLoadingPhase 调用）。
+     * 装载会整体替换世界状态：恢复前会话初始化（默认启动等）入队的事件引用的是被丢弃的旧世界，
+     * 若不清空，续跑第一拍会把这些过期事件派发给触发接线表，重放中断前已发生的启动链（T1.5 分叉根因一）。
+     */
+    final void clearPendingEventsForArchiveRestore() {
+        assertSingleWriter();
+        eventQueue.clear();
+    }
+
+    /**
      * 丢弃 mark 之后入队的全部事件（单写者线程内，mark 由 pendingEventCount 取得）。
      * 用于零时间循环熔断：让失控的过程自己失败，而不让它堆积的事件触发整个会话的事件风暴熔断。
      */

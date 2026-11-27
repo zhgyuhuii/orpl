@@ -277,13 +277,18 @@ public class RealCorpusEndToEndTest {
     /**
      * T1.5 验收：第 150 拍导出存档，新会话恢复后续跑到 300，与不中断运行的最终状态一致。
      * <p>
-     * 当前已知缺陷（T1.5 待专项修复）：恢复后的世界墙钟（时间日期基准）未随存档恢复，
-     * 导致“实际到站/离站时刻”整体偏移一次中断时长；在途耗时过程的周期也与连续运行发散。
-     * 本用例先行锁定该缺陷，修复后启用。
+     * 曾锁定的两个分叉根因已修复（2026-11-27 存档确定性专项）：
+     * ① 事件重放——恢复装载期未清空待派发事件队列，恢复前会话初始化入队的过期事件在续跑首拍派发，
+     *    重放中断前已发生的启动链（修复：enterArchiveLoadingPhase 一并清空待派发队列）；
+     * ② 在途任务对齐——接线启动的在途顶层过程成功后的输出影响回写钩子（afterN 是接线侧闭包）
+     *    未随存档重建（修复：ProcessArchivePart 增加 wiringContextInstanceId + 生成运行时
+     *    reattachWiringHook 按 defKey 重挂 + 过程实例序号游标随存档推进防撞名）。
+     * <p>
+     * 对比口径与 T1.4 一致：墙钟戳成员（实际到站/离站时刻 = 仿真时间.时间日期写入，
+     * 随会话 startEpoch 变化）不属于仿真状态——恢复会话忠实继承中断会话的墙钟基准，
+     * 与连续会话各自的 startEpoch 天然相差毫秒级，不构成状态分叉。
      */
     @Test
-    @org.junit.jupiter.api.Disabled("T1.5 证据已固化：151 拍首步即分叉（恢复世界多出 GeoPoint_6/7、列车提前进入停站、"
-            + "到站时刻=+150 拍）；逐拍 digest 对比工具保留在本用例，待存档子系统专项（事件重放/在途任务对齐）")
     void realCorpusResumesFromArchive() throws IOException {
         GeneratedModuleBundle bundle = generateRealModule();
         Map<String, byte[]> bytecodes = compileRealModule(bundle);
@@ -296,7 +301,8 @@ public class RealCorpusEndToEndTest {
             String plain = manager.startSession(runtime, scene, Map.of(), 20261126L, true, null);
             manager.stepSession(plain, 150);
             Map<Long, String> plainDigests = new java.util.LinkedHashMap<>();
-            java.util.function.Function<WorldSnapshot, String> digestFn = snap -> snap.instances().toString();
+            java.util.function.Function<WorldSnapshot, String> digestFn = snap ->
+                    withoutWallClock(snap).toString();
             for (int tick = 151; tick <= 300; tick++) {
                 WorldSnapshot sp = manager.stepSession(plain, 1);
                 plainDigests.put(sp.tickIndex(), digestFn.apply(sp));
@@ -353,7 +359,8 @@ public class RealCorpusEndToEndTest {
                     StandardCharsets.UTF_8);
             WorldSnapshot endResumed = manager.getSnapshot(resumed);
             Assertions.assertEquals(300L, endResumed.tickIndex(), "续跑应精确推进到第 300 拍");
-            Assertions.assertEquals(endPlain.instances(), endResumed.instances(),
+            // 墙钟戳成员随会话 startEpoch 变化（T1.4 同口径），不构成状态分叉
+            Assertions.assertEquals(withoutWallClock(endPlain), withoutWallClock(endResumed),
                     "存档续跑第 151~300 拍应与连续运行一致");
             Assertions.assertEquals(endPlain.problems(), endResumed.problems());
             for (String id : List.of(plain, split, resumed)) {

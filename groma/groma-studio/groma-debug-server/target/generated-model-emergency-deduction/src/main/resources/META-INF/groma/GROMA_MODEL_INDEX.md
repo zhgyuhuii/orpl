@@ -395,14 +395,14 @@
 | 车站 | 入口过水 | `StationInletFlowProcessTask` | 瞬时 | 区域水面高程:double，本步秒数:long，站内水面高程:double，区域积水量:double | 向站内流入:boolean，当前过水流量:double，本步过水量:double | 6 |
 | 区域 | 积水变化 | `AreaWaterloggingChangeProcessTask` | 瞬时 | 水量变化值:double | — | 7 |
 | 区域 | 地表排水 | `AreaSurfaceDrainProcessTask` | 耗时 | — | — | 8 |
-| 列车 | 沿区间前进 | `TrainAdvanceAlongSectionProcessTask` | 瞬时 | 地铁区间:com.groma.models.emergencydeduction.model.entity.MetroSectionEntity，目标车站:com.groma.models.emergencydeduction.model.entity.StationEntity，行驶间隔:double，已行驶距离:double，是否沿里程增大方向:boolean，当前线路里程:double | 已行驶距离:double，当前线路里程:double | 15 |
+| 列车 | 沿区间前进 | `TrainAdvanceAlongSectionProcessTask` | 瞬时 | 地铁区间:com.groma.models.emergencydeduction.model.entity.api.MetroSectionReadOnly，目标车站:com.groma.models.emergencydeduction.model.entity.api.StationReadOnly，行驶间隔:double，已行驶距离:double，是否沿里程增大方向:boolean，当前线路里程:double | 已行驶距离:double，当前线路里程:double | 15 |
 | 文件类型 | 判断是否为空文件 | `FileTypeIsEmptyFileProcessTask` | 瞬时 | — | 是否为空:boolean | 1 |
 | 场景1 | 2把否变成是 | `Scene12TurnNoIntoYesProcessTask` | 瞬时 | — | 文本1:boolean | 1 |
 | 车站 | 水流交换间隔 | `StationFlowExchangeIntervalProcessTask` | 耗时 | — | 本步时长:long | 3 |
 | 降雨 | 获取雨量序列 | `RainfallGetRainfallSeriesProcessTask` | 瞬时 | 雨量序列新:java.util.Map<java.lang.Long, java.lang.Double>，原雨量序列:java.util.Map<java.lang.Long, java.lang.Double> | — | 3 |
 | 地铁区间 | 车站与区间水流交换 | `MetroSectionStationSectionFlowExchangeProcessTask` | 耗时 | 水流系数:double，连接处底高程:double，端点车站:com.groma.models.emergencydeduction.model.entity.StationEntity，有效过水宽度:double | 本步过水量:double，当前过水流量:double | 5 |
 | 文件类型 | 文件初始化 | `FileTypeFileInitProcessTask` | 瞬时 | — | — | 7 |
-| 独立过程 | 查找前方车站 | `FindAheadStationProcessTask` | 瞬时 | 当前线路与列车:com.groma.models.emergencydeduction.model.entity.LineWithTrainEntity | 是否找到:boolean，前方线路与车站:com.groma.models.emergencydeduction.model.entity.LineWithStationEntity | 16 |
+| 独立过程 | 查找前方车站 | `FindAheadStationProcessTask` | 瞬时 | 当前线路与列车:com.groma.models.emergencydeduction.model.entity.api.LineWithTrainReadOnly | 是否找到:boolean，前方线路与车站:com.groma.models.emergencydeduction.model.entity.LineWithStationEntity | 16 |
 | 列车 | 离站 | `TrainDepartProcessTask` | 瞬时 | 车站与停靠列车:com.groma.models.emergencydeduction.model.entity.StationWithParkedTrainEntity | — | 2 |
 | 文件类型 | 读取文本内容 | `FileTypeReadTextContentProcessTask` | 瞬时 | — | 文件内容:java.lang.String | 1 |
 | 独立过程 | 确定两端水位 | `DetermineBothWaterLevelsProcessTask` | 瞬时 | 第一侧底高程:double，第一侧水深:double，第二侧底高程:double，第二侧水深:double | 第一侧水面高程:double，第二侧水面高程:double | 2 |
@@ -966,3 +966,5 @@ flowchart LR
 - [owner:LM3IeUACJIRWE5PKqrG] 输出转换的目标枚举成员不唯一，按画布位置取第一个
 - [owner:yALuBQFoqC0OJuH31TP] 输出转换的目标枚举成员不唯一，按画布位置取第一个
 - 计算处置时间：工具 arithmetic.divide 的入参 a 未绑定，按零值处理
+- 过程 形成车站与列车的关联 在类型 线路与列车 上有多条带输出影响的接线：存档续跑统一重挂第一条（after11）的回写钩子，其余接线若回写目标不同需拆分过程定义
+- 过程 区间行驶 在类型 线路与列车 上有多条带输出影响的接线：存档续跑统一重挂第一条（after13）的回写钩子，其余接线若回写目标不同需拆分过程定义

@@ -121,7 +121,10 @@ public final class ModelLayerEmitter {
                 Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL).initializer(metas.build()).build());
 
         for (MemberInfo member : type.ownMembers()) {
-            tb.addField(FieldSpec.builder(member.type(), member.field(), Modifier.PRIVATE)
+            // 有子类的实体字段放宽为 protected：子类 getMemberValue/setMemberValue 的开关表按 allMembers
+            // （含继承成员）直接以 this.字段 访问，private 父字段对子类不可见（模型 2 继承实证）
+            Modifier fieldVisibility = hasSubclass(type) ? Modifier.PROTECTED : Modifier.PRIVATE;
+            tb.addField(FieldSpec.builder(member.type(), member.field(), fieldVisibility)
                     .addJavadoc(memberJavadoc(type, member))
                     .addAnnotation(AnnotationSpec.builder(PlanModel.SCHEMA).addMember("title", "$S", member.zhName()).build())
                     .addAnnotation(memberMeta(member))
@@ -140,11 +143,21 @@ public final class ModelLayerEmitter {
                 .returns(PlanModel.listOf(PlanModel.MEMBER_META)).addStatement("return MEMBERS").build());
 
         for (MemberInfo member : type.ownMembers()) {
-            emitAccessors(tb, member);
+            emitAccessors(tb, type, member);
         }
         emitMemberSwitches(tb, type);
         emitCopy(tb, type);
         return JavaFile.builder(cn.packageName(), tb.build()).indent("    ").build();
+    }
+
+    /** 该类型是否被其他类型继承（主父类指到它）——决定实体字段可见性 */
+    private boolean hasSubclass(TypeInfo type) {
+        for (TypeInfo info : model.types.values()) {
+            if (info.parent() == type) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String entityJavadoc(TypeInfo type) {
@@ -240,15 +253,24 @@ public final class ModelLayerEmitter {
     }
 
     private CodeBlock fieldInitializer(MemberInfo member) {
-        if (PlanModel.KIND_REF.equals(member.kind()) || PlanModel.KIND_LIST.equals(member.kind())
-                || PlanModel.KIND_MAP.equals(member.kind())) {
+        if (PlanModel.KIND_LIST.equals(member.kind())) {
+            // 方案 C：集合字段从创建起就是受观察视图（null 汇 = 创建期静默），ctx 写入方法再接上事件汇
+            return CodeBlock.of("new $T<>(new $T<>(16), null)",
+                    PlanModel.OBSERVABLE_LIST, java.util.ArrayList.class);
+        }
+        if (PlanModel.KIND_REF.equals(member.kind()) || PlanModel.KIND_MAP.equals(member.kind())) {
             return CodeBlock.of(model.defaultLiteral(member.type(), member.kind()));
         }
         String raw = PlanModel.KIND_ENUM.equals(member.kind()) ? member.initialState() : member.defaultValue();
         return model.literalCode(member.type(), member.kind(), raw);
     }
 
-    private void emitAccessors(TypeSpec.Builder tb, MemberInfo member) {
+    private void emitAccessors(TypeSpec.Builder tb, TypeInfo type, MemberInfo member) {
+        // R05 集合代理：代理本类型集合成员的 PROXY 图元实体 id（集合事件汇同步发代理事件）
+        List<String> proxyIds = model.proxiesByType.getOrDefault(type.typeId(), List.of()).stream()
+                .filter(px -> px.collectionMemberId().equals(member.tokenId()))
+                .map(CompilePlanIR.ProxyDefIR::proxyEntityId)
+                .toList();
         boolean bool = member.type() == TypeName.BOOLEAN;
         tb.addMethod(MethodSpec.methodBuilder(member.getter()).addAnnotation(Override.class)
                 .addModifiers(Modifier.PUBLIC).returns(member.type())
@@ -265,7 +287,20 @@ public final class ModelLayerEmitter {
         setter.addStatement("return");
         setter.endControlFlow();
         setter.addStatement("$T before = this.$L", member.type(), member.field());
-        setter.addStatement("this.$L = value", member.field());
+        if (PlanModel.KIND_LIST.equals(member.kind())) {
+            // 方案 C：集合写入接入双视角事件汇（持有方 ma/mx + 元素 am/xm）；已是受观察视图则原样保留。
+            // R05：本成员被 PROXY 图元代理时，事件汇同步以代理 id 派发同码事件
+            if (proxyIds.isEmpty()) {
+                setter.addStatement("this.$L = $T.observed(value, ctx.collectionSink(this, $S))",
+                        member.field(), PlanModel.OBSERVABLE_LIST, member.tokenId());
+            } else {
+                setter.addStatement("this.$L = $T.observed(value, ctx.collectionSinkWithProxies(this, $S, $T.of($L)))",
+                        member.field(), PlanModel.OBSERVABLE_LIST, member.tokenId(), List.class,
+                        CodeBlock.join(proxyIds.stream().map(id -> CodeBlock.of("$S", id)).toList(), ", "));
+            }
+        } else {
+            setter.addStatement("this.$L = value", member.field());
+        }
         setter.addStatement("markDirty($L)", member.bit());
         setter.addStatement("ctx.onMemberChanged(this, $S, before, value)", member.tokenId());
         tb.addMethod(setter.build());

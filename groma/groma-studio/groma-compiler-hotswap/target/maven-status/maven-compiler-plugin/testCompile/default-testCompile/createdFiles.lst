@@ -1,3 +1,4 @@
-com/groma/studio/compiler/RealCorpusEndToEndTest$CorpusTrace.class
 com/groma/studio/compiler/RealCorpusEndToEndTest.class
 com/groma/studio/compiler/CompilerHotswapAndWorkspaceSyncTest.class
+com/groma/studio/compiler/RealCorpusEndToEndTest$CorpusTrace.class
+com/groma/studio/compiler/ThreeCorpusCodeGenTest.class
