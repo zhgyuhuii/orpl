@@ -67,12 +67,18 @@ import java.util.Map;
             String elementTypeId
     ) {}
 
-    /** R25 超时（pcd）/ R26 提前完成（pca）异常控制流边；eventKind 取 OVERTIME_PCD / UNDERTIME_PCA */
+    /** R25 超时（pcd）/ R26 提前完成（pca）异常控制流边；eventKind 取 OVERTIME_PCD / UNDERTIME_PCA。
+     *  sourcePc = 被监控的耗时子过程节点（设计视图中连线源端），-1 表示连线挂在过程整体（过程级监控）。 */
     public record ExceptionFlowIR(
             String eventKind,
+            int sourcePc,
             int targetPc,
             String targetDefKey
-    ) {}
+    ) {
+        public ExceptionFlowIR(String eventKind, int targetPc, String targetDefKey) {
+            this(eventKind, -1, targetPc, targetDefKey);
+        }
+    }
 
     /**
      * 类型成员

@@ -256,8 +256,37 @@ public com.groma.base.engine.GromaWorldContext.ExternalScriptIoExecutor pythonSc
 
 ---
 
-## 六、回归验证与产物
+## 七、外部"具体代码实现"的收割记录（第三轮，2026-11-27）
 
-- 本轮修复涉及文件：`StaticModelValidator`、`ModelPipelineService`、`GromaWorldContext`、`WorldContextEmitter`、`ManifestAndIndexEmitter`、`LeafBodyEmitter`、`ProcessCodeAstTranslator`、`ServiceLayerEmitter`、`GromaModuleSourceGeneratorFacade`。
-- 测试：受影响六模块全量回归通过（含真实语料六步流水线、ECJ+javac 对拍、存档往返、校验规则单测）。
-- 模型 2 验证路径：宿主启动后 `POST /api/v1/studio/models/upload` 传 `scene-a.json + scene-b.json`（或 `fetch-remote` 拉取），构建报告的 warnings 将列出 VAL-004 WARNING 与 Python 剥离 WARN；生成的 `IIndependentProcessService` 含"航路规划与同步到达算法"门面；Python 双向桥在装配方 F 后打通。
+外部报告第四节给出的代码按"**增量适配现有 IR**"方式收割（4.1 整文件替换不可行——其 TypeDefIR/ProcessDefIR 结构与现有 CompilePlanIR 不兼容，直接替换会破坏全部 emitter 与解析器约 200 处调用点；逐片段适配后全部编译通过、回归全绿）：
+
+| 收割项 | 外部代码 | 落地形态 |
+|---|---|---|
+| 4.1 CompilePlanIR 扩展 | TypeDefIR +mixin/proxies/notes；ProcessDefIR +selfInvoking/preActions/notes；NextIR/PostIR/TriggerIR +probability/probabilityGroup/expression；NodeIR +lastEnd | ✅ 增量收割（加字段 + 保留旧规范构造器兼容，波及仅 parser 6 处 + LegacyPlanAdapter 4 处）：TypeDefIR +mixinParentIds/proxies/notes、ProcessDefIR +exceptionFlows、ConditionRuleIR +expression、PostIR/NextIR/TriggerIR +概率组、NodeIR +lastEnd、新增 `ProxyDefIR`/`ExceptionFlowIR`。selfInvoking/preActions/notes 未加（无解析来源，待 R24 收割时一并） |
+| 4.2 补丁 A（R01 多继承解析） | resolveParentIds | ✅ 适配落地：`inheritEntityId` + `inherits` 数组 + **全视图预扫描**画布 edge-extend（画布约定**父 --extend--> 子**，且组织树级视图不在实体 defineViewId 下，首版单视图扫描漏抓已修正）+ PARENT 实体（typeEntityId=子类型、父类经 inheritEntityId/类名定位）。**真实语料验证**：模型 2 的 5 组画布继承全部入表，与实体 `inheritEntityId` 指向同一父（画布边是属性继承的图形化表达，去重后 mixins=[] 为正确语义——多继承为单父场景） |
+| 4.2 补丁 B（R05 代理解析） | parseProxies + ProxyDefIR | ✅ 落地：PROXY 图元 + 入向 edge-proxy → `TypeDefIR.proxies`。**真实语料验证：模型 2 proxies=1 精确命中报告声称的那 1 组**。resolveOperand 的 PROXY 分支为注释形态未收割（无完整实现），消费待方案 C |
+| 4.2 补丁 C（R21/R22/R13/R15 条件解析） | parseConditions | ✅ 适配落地：`parseGuardsAndExceptions` 扫定义/设计视图 condition/agent/in-change/in-out 边 → `ProcessDefIR.startConditions/maintainConditions`（字段早已存在，原硬编码 `List.of()` 已替换）；agent 同时进 canStart 与 maintain。**真实语料核实**：模型 1 的 3 条 condition 连线实体是**孤儿**（无 target 字段、无画布图元），无法定位归属过程——startRules=0 是语料事实而非解析缺陷，报告"模型 1 含 3 条 condition"的实体计数正确但其可编译性被高估 |
+| R25/R26 异常边（外部文档截断处） | parseProcessGuardsAndExceptions（代码未给出） | ✅ 自行实现补全：overtime/undertime-exception 边 → `ExceptionFlowIR(OVERTIME_PCD/UNDERTIME_PCA, 目标 pc)`，pc 经节点 cellId 映射 |
+| 概率组（补丁 probabilityOf/probabilityGroupOf） | 同上 | ✅ 落地：连线 rate/probability/probabilityGroup/groupCode/mutexGroup 兼容读取，填充 NextIR/PostIR（百分数 >1 自动归一）。出码消费（CDF 互斥采样）待方案 D |
+| 出码消费（新增，超出外部文档范围） | — | ✅ `ProcessTaskEmitter.emitCanStart` 接入 startConditions：状态前置生成 `enumZhLabel` 中文比对（与事件接线表同一语义）、数值/布尔条件内联字面量比较、复合逻辑表达式注释降级不误杀 |
+
+**未收割与原因**：4.1 整文件替换（不兼容）；粘贴文档截断处之后的 generator/engine 层代码未在附件中；`checkMaintain`/`pca/pcd/psf/paa` 出码与触发概率消费需 engine `GromaTriggerTable`/`GromaProcessTask` 结构演进，按第五节方案 D 分期。
+
+**验证**：受影响四模块回归 BUILD SUCCESS（parser 全部单测含真实语料确定性解析、source-generator 确定性+扫描、compiler-hotswap 真实语料 ECJ+javac 对拍、bootstrap 全链路集成）；jshell 级抽查确认 IR 承载（proxies=1、画布继承表 5 条）。
+
+### 七·B、code.md 审查与二次收割（第四轮，2026-11-27）
+
+`docs/code.md`（4872 行）经 diff 驱动审查：其六个 java 文件打印段（CompilePlanIR/GromaModuleIR/CanvasMappingTables/StaticModelValidator/UniqueIdentifierGuard/GraphCycleAndDepthGuard）与本仓库**逐字节一致**（快照基于第三轮修复后的仓库，无独立改动）；语料统计与第三轮实测一致；其 parser 全文打印（3215 行带行号）中独有 **692 行补丁集（【修复 1~6】）**，收割结果：
+
+| 补丁 | 判定 | 落地 |
+|---|---|---|
+| 【修复 3】collectPostActions 并入 R15 "in-out" 目标状态后置转换 | ✅ 收割 | `AbModelMergerAndParser.collectPostActions`：in-out 与 out-change 同路承载 OUT_CHANGE |
+| 【修复 4】R25/R26 精确绑定 sourcePc（被监控耗时子过程） | ✅ 收割 | `ExceptionFlowIR` 加 `sourcePc` 字段（兼容旧 3 参）；`parseGuardsAndExceptions` overtime/undertime 分支记录 srcPc/dstPc |
+| 【修复 5】buildWiring/buildTrigger 丢弃 expression/probability/probabilityGroup | ✅ 收割 | 触发接线调用点与 `buildTrigger` 签名扩展，`TriggerIR` 16 参承载概率组与复合表达式 |
+| 【修复 6】R27 edge-note 备注采集 | ✅ 收割 | 新增 `collectNotes` → `TypeDefIR.notes`（出码写 Javadoc 的信息承载，Javadoc 渲染待 emitter 消费） |
+| 【修复 1/2】PARENT 图元升级注册为领域基类 | ⏸ 暂不收 | 触发场景（外部组件基类仅以 PARENT 图元存在于本包且 TYPE 引用断裂）不在现有两套语料中出现；机制记入方案 A 备注 |
+| parseParams seen 去重等 | ✗ 假差异 | 仓库现状已实现（diff 对齐漂移） |
+
+**验证**：全仓编译零错误；受影响四模块回归 **BUILD SUCCESS，85 用例 0 失败 0 错误**。
+
+## 八、回归验证与产物（含第三轮收割验证）

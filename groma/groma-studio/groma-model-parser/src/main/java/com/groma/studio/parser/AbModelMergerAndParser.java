@@ -690,9 +690,16 @@ public final class AbModelMergerAndParser {
                         continue;
                     }
                     if (overtime || undertime) {
-                        Integer pc = pcByCell.get(text(target, "id"));
-                        exceptions.add(new ExceptionFlowIR(overtime ? "OVERTIME_PCD" : "UNDERTIME_PCA",
-                                pc == null ? -1 : pc, ""));
+                        // 收割【修复 4】：连线位于设计视图两个子过程之间时，source=被监控耗时子过程、
+                        // target=异常处理子过程；sourcePc=-1 表示过程级超时/提前监控
+                        Integer srcPc = pcByCell.get(text(source, "id"));
+                        Integer dstPc = pcByCell.get(text(target, "id"));
+                        if (dstPc != null) {
+                            exceptions.add(new ExceptionFlowIR(
+                                    overtime ? "OVERTIME_PCD" : "UNDERTIME_PCA",
+                                    srcPc == null ? -1 : srcPc,
+                                    dstPc, ""));
+                        }
                         continue;
                     }
                     JsonNode linkEntity = entities.get(text(edge, "data"));
@@ -1288,7 +1295,10 @@ public final class AbModelMergerAndParser {
             List<JsonNode> postEdges = new ArrayList<>();
             for (JsonNode edge : view.outgoing(cellId)) {
                 String linkType = linkType(edge);
-                if ("out-change".equals(linkType) || "result".equals(linkType) || "consumption".equals(linkType)) {
+                // 收割【修复 3】：R15 in-out 拆解语义——源状态前置进 canStart（parseGuards），
+                // 目标状态后置转换在此与 out-change 同路承载
+                if ("out-change".equals(linkType) || "in-out".equals(linkType) || "result".equals(linkType)
+                        || "consumption".equals(linkType)) {
                     postEdges.add(edge);
                 }
             }
@@ -1300,7 +1310,7 @@ public final class AbModelMergerAndParser {
                     continue;
                 }
                 String linkType = linkType(edge);
-                if ("out-change".equals(linkType)) {
+                if ("out-change".equals(linkType) || "in-out".equals(linkType)) {
                     JsonNode stateEntity = entities.get(text(target, "data"));
                     String enumId = enumOfState.getOrDefault(text(target, "data"), "");
                     OperandIR member = enumMemberOperand(def, view, enumId);
@@ -1920,11 +1930,13 @@ public final class AbModelMergerAndParser {
                             continue;
                         }
                         JsonNode linkEntity = entities.get(text(edge, "data"));
+                        double prob = probabilityOf(edge, linkEntity);
+                        String probGroup = probabilityGroupOf(edge, linkEntity);
                         for (String eventCode : events.split(",")) {
                             if (!eventCode.isBlank()) {
                                 triggers.add(buildTrigger(ctx, view, source, eventCode.trim(), conditionsOf(linkEntity),
                                         expressionOf(linkEntity), defKey, hostPath, args, postActions, typeId,
-                                        linkType(edge) + " " + text(callee, "label")));
+                                        linkType(edge) + " " + text(callee, "label"), prob, probGroup));
                             }
                         }
                     }
@@ -1968,7 +1980,7 @@ public final class AbModelMergerAndParser {
         private TriggerIR buildTrigger(DefCtx ctx, ViewCtx view, JsonNode sourceCell, String eventCode,
                                        List<ConditionIR> judge, String expression, String targetDefKey,
                                        List<String> hostPath, List<ArgBindingIR> args, List<PostIR> postActions,
-                                       String ownerTypeId, String describe) {
+                                       String ownerTypeId, String describe, double probability, String probabilityGroup) {
             JsonNode sourceEntity = entities.get(text(sourceCell, "data"));
             String stateLabel = "";
             String memberToken;
@@ -2000,7 +2012,8 @@ public final class AbModelMergerAndParser {
                 sourceTypeId = ownerTypeId;
             }
             return new TriggerIR(sourceTypeId, memberToken, eventCode, stateLabel, judge,
-                    sourceOperand, contextPath, targetDefKey, hostPath, args, postActions, ownerTypeId, describe);
+                    sourceOperand, contextPath, targetDefKey, hostPath, args, postActions, ownerTypeId, describe,
+                    expression, probability, probabilityGroup);
         }
 
         /** 成员路径操作数 → 从宿主自身的完整成员 id 序列 */
@@ -2038,6 +2051,40 @@ public final class AbModelMergerAndParser {
                     text(entity, "description"), slotType(entity));
         }
 
+        /**
+         * 收割【修复 6】（R27 备注连线）：提取定义/设计视图中 note 连线关联的 NOTE 图元文本，
+         * 归集到类型定义（出码时写入 Javadoc 的信息在此承载）。
+         */
+        private List<String> collectNotes(String entityId) {
+            JsonNode ent = entities.get(entityId);
+            if (ent == null) {
+                return List.of();
+            }
+            List<String> notes = new ArrayList<>();
+            for (String vid : List.of(text(ent, "defineViewId"), text(ent, "designViewId"))) {
+                ViewCtx v = view(vid);
+                if (v == null) {
+                    continue;
+                }
+                for (JsonNode edge : v.cells) {
+                    if (!"LINK".equals(text(edge, "type")) || !"note".equals(linkType(edge))) {
+                        continue;
+                    }
+                    for (JsonNode end : new JsonNode[]{v.source(edge), v.target(edge)}) {
+                        if (end == null || !"NOTE".equals(text(end, "type"))) {
+                            continue;
+                        }
+                        JsonNode noteEntity = entities.get(text(end, "data"));
+                        String noteText = noteEntity == null ? text(end, "label") : text(noteEntity, "label");
+                        if (!noteText.isBlank() && !notes.contains(noteText)) {
+                            notes.add(noteText);
+                        }
+                    }
+                }
+            }
+            return notes;
+        }
+
         private List<TypeDefIR> buildTypeDefs() {
             List<TypeDefIR> types = new ArrayList<>();
             LinkedHashSet<String> owners = new LinkedHashSet<>(domainTypeIds);
@@ -2054,14 +2101,20 @@ public final class AbModelMergerAndParser {
                 List<String> mixins = parentIds.size() > 1 ? parentIds.subList(1, parentIds.size()) : List.of();
                 types.add(new TypeDefIR(typeId, text(entity, "label"), text(entity, "description"),
                         text(entity, "essence"), typeKind.get(typeId), parent,
-                        List.copyOf(mixins), List.copyOf(parseProxies(typeId)), List.copyOf(members), List.of()));
+                        List.copyOf(mixins), List.copyOf(parseProxies(typeId)), List.copyOf(members),
+                        List.copyOf(collectNotes(typeId))));
             }
             return types;
         }
 
+        /** 画布继承边预扫描缓存（child 类型 id → 有序父类型 id） */
+        private Map<String, List<String>> canvasExtends;
+
         /**
-         * 收割补丁 A（R01 多继承）：inheritEntityId 单值 + inherits 数组 + 定义/设计视图的
-         * PARENT 图元与 edge-extend 连线一并收集（模型 2 智能筹划含 5 组画布继承）。
+         * 收割补丁 A（R01 多继承）：inheritEntityId 单值 + inherits 数组 + 全视图画布继承边
+         * （edge-extend 连线：画布约定父 --edge-extend--> 子；PARENT 实体：typeEntityId=子类型，
+         * 父类经 inheritEntityId 或类名定位）。模型 2 智能筹划含 5 组画布继承（存在于组织树级
+         * 视图而非实体自有视图，故须全视图预扫描）。
          * 返回有序去重父类 id 列表：首为主父类，其余为副父类（mixin）。
          */
         private List<String> resolveParentIds(String typeId, JsonNode typeEntity) {
@@ -2079,8 +2132,22 @@ public final class AbModelMergerAndParser {
                     }
                 }
             }
-            for (String viewId : List.of(text(typeEntity, "defineViewId"), text(typeEntity, "designViewId"))) {
-                ViewCtx v = view(viewId);
+            for (String pid : canvasExtends().getOrDefault(typeId, List.of())) {
+                if (!pid.equals(typeId)) {
+                    parents.add(pid);
+                }
+            }
+            return List.copyOf(parents);
+        }
+
+        /** 全视图扫描画布继承边 + PARENT 实体归属，建 child → 有序父类型表（懒加载缓存） */
+        private Map<String, List<String>> canvasExtends() {
+            if (canvasExtends != null) {
+                return canvasExtends;
+            }
+            Map<String, java.util.LinkedHashSet<String>> table = new LinkedHashMap<>();
+            for (Map.Entry<String, List<JsonNode>> entry : rawViews.entrySet()) {
+                ViewCtx v = view(entry.getKey());
                 if (v == null) {
                     continue;
                 }
@@ -2093,22 +2160,46 @@ public final class AbModelMergerAndParser {
                     if (src == null || dst == null) {
                         continue;
                     }
-                    // 方圆画布约定：子类型 --edge-extend--> 父类型（PARENT 或 TYPE 图元）
-                    String childData = text(src, "data");
-                    String parentData = text(dst, "data");
-                    String resolvedPid = childData.equals(typeId) ? parentData
-                            : (parentData.equals(typeId) ? childData : "");
-                    JsonNode parentEntity = entities.get(resolvedPid);
+                    // 画布约定：父类型 --edge-extend--> 子类型（src=父，dst=子）
+                    String parentData = text(src, "data");
+                    String childData = text(dst, "data");
+                    JsonNode parentEntity = entities.get(parentData);
                     if (parentEntity != null && !"TYPE".equals(text(parentEntity, "type"))) {
                         String viaRef = refTypeIdOf(parentEntity);
-                        resolvedPid = viaRef.isEmpty() ? findByLabel(text(parentEntity, "label"), false) : viaRef;
+                        parentData = viaRef.isEmpty() ? findByLabel(text(parentEntity, "label"), false) : viaRef;
                     }
-                    if (!resolvedPid.isEmpty() && domainTypeIds.contains(resolvedPid) && !resolvedPid.equals(typeId)) {
-                        parents.add(resolvedPid);
+                    JsonNode childEntity = entities.get(childData);
+                    if (childEntity != null && !"TYPE".equals(text(childEntity, "type"))) {
+                        String viaRef = refTypeIdOf(childEntity);
+                        childData = viaRef.isEmpty() ? findByLabel(text(childEntity, "label"), false) : viaRef;
+                    }
+                    if (!parentData.isEmpty() && !childData.isEmpty()
+                            && domainTypeIds.contains(parentData) && domainTypeIds.contains(childData)
+                            && !parentData.equals(childData)) {
+                        table.computeIfAbsent(childData, k -> new java.util.LinkedHashSet<>()).add(parentData);
                     }
                 }
             }
-            return List.copyOf(parents);
+            for (JsonNode pe : entities.values()) {
+                if (!"PARENT".equals(text(pe, "type"))) {
+                    continue;
+                }
+                String childId = text(pe, "typeEntityId");
+                String parentId = text(pe, "inheritEntityId");
+                if (parentId.isEmpty()) {
+                    parentId = findByLabel(text(pe, "label"), false);
+                }
+                if (!childId.isEmpty() && !parentId.isEmpty() && domainTypeIds.contains(parentId)
+                        && !parentId.equals(childId)) {
+                    table.computeIfAbsent(childId, k -> new java.util.LinkedHashSet<>()).add(parentId);
+                }
+            }
+            Map<String, List<String>> frozen = new LinkedHashMap<>();
+            for (Map.Entry<String, java.util.LinkedHashSet<String>> entry : table.entrySet()) {
+                frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
+            }
+            canvasExtends = frozen;
+            return frozen;
         }
 
         /**
