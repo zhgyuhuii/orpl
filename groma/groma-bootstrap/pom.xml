@@ -50,8 +50,10 @@
             <artifactId>groma-compiler-hotswap</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- 合包模型源改为 T2 构建流水线热挂载（E1 决策：手写示例模块无运行时入口且类名与生成模块冲突，
-             模型经 POST /api/v1/studio/models/build 构建后热挂载；scanBasePackages 的 com.groma.models 保留供未来合包） -->
+        <!-- 合包模型交付走两条路（E1 决策：手写示例模块无运行时入口且类名与生成模块冲突，示例模块保持不动）：
+             1) 运行期热挂载：POST /api/v1/studio/models/build 构建后经 GromaModelRegistry 版本钉住挂载（默认）；
+             2) 静态合包交付：GET /api/v1/studio/workspace/export-zip 导出含所选生成模型的源码工程 ZIP，
+                产物 mvn clean package 即得内置模型的宿主 JAR（scanBasePackages 的 com.groma.models 保留） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

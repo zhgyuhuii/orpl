@@ -103,21 +103,28 @@ public final class DomainGlossaryTokenizer {
         d.put("保存", "save");
         d.put("算法", "algorithm");
         d.put("管理", "manager");
-        // 领域词典外置为资源文件（业务词根与整词都可在这里扩充，无需改代码）
-        try (InputStream in = DomainGlossaryTokenizer.class.getResourceAsStream(
-                "/com/groma/studio/naming/groma-glossary.properties")) {
-            if (in != null) {
+        // 领域词典外置为模块化分片（基础词库 + 领域词库；按领域分片扩充无需改代码，落实建议 8）。
+        // 加载顺序即优先级：基础 groma-glossary.properties 优先，领域分片补充（同名词条先加载者胜出）。
+        for (String shard : List.of("groma-glossary.properties",
+                "groma-glossary-rail-transit.properties",
+                "groma-glossary-emergency.properties",
+                "groma-glossary-unmanned-system.properties")) {
+            try (InputStream in = DomainGlossaryTokenizer.class.getResourceAsStream(
+                    "/com/groma/studio/naming/" + shard)) {
+                if (in == null) {
+                    continue; // 领域分片可选，缺失不报错
+                }
                 Properties glossary = new Properties();
                 glossary.load(new InputStreamReader(in, StandardCharsets.UTF_8));
                 for (String zhTerm : glossary.stringPropertyNames()) {
                     String english = glossary.getProperty(zhTerm) == null ? "" : glossary.getProperty(zhTerm).trim();
                     if (!zhTerm.isBlank() && !english.isBlank()) {
-                        d.put(zhTerm.trim(), english);
+                        d.putIfAbsent(zhTerm.trim(), english);
                     }
                 }
+            } catch (IOException ex) {
+                throw new ExceptionInInitializerError("加载领域词典分片 " + shard + " 失败: " + ex.getMessage());
             }
-        } catch (IOException ex) {
-            throw new ExceptionInInitializerError("加载 groma-glossary.properties 失败: " + ex.getMessage());
         }
         BUILTIN_DICT = Collections.unmodifiableMap(d);
 

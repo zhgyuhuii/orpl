@@ -17,57 +17,59 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * WebSocket 装配（阶段 2-E 第 4 项，协议以 groma/docs/ws-protocol.md 为准；base-websocket 为 JSR-356 组件）：
  * 态势与控制信令共用 /ws/groma/{modelCode}/{sceneCode}/{sessionId}（单会话默认最多 50 订阅端），
  * DAP 调试通道 /ws/debug/{sessionId}。帧协议 TP:v1 由 WsRoomSubscriptionManager 合流广播。
+ * <p>
+ * 依赖注入方式（修复原 static volatile 桥接在多 Spring Context 并行时的覆盖缺陷）：
+ * JSR-356 容器不归 Spring 实例化，端点依赖在注册期写入 {@link ServerEndpointConfig#getUserProperties()}，
+ * 端点实例经 {@link EndpointConfig#getUserProperties()} 读取——彻底移除静态全局变量。
+ * </p>
  */
 @Configuration
 public class GromaWebSocketConfiguration {
 
     private static final Logger LOG = LoggerFactory.getLogger(GromaWebSocketConfiguration.class);
 
-    /** JSR-356 容器不归 Spring 实例化，端点依赖经静态桥接（宿主单例，@Bean 装配时赋值） */
-    static volatile WsRoomSubscriptionManager ROOMS;
-    static volatile WsInboundCommandDispatcher DISPATCHER;
-    static volatile GromaMcpEnginePort PORT;
-    static volatile DapWebSocketRouter DAP_ROUTER;
+    /** userProperties 中各依赖的键名 */
+    private static final String KEY_ROOMS = "groma.ws.rooms";
+    private static final String KEY_DISPATCHER = "groma.ws.dispatcher";
+    private static final String KEY_PORT = "groma.ws.port";
+    private static final String KEY_DEBUG_BRIDGE = "groma.ws.debugBridge";
 
     @Bean
     public WsRoomSubscriptionManager wsRoomSubscriptionManager(
             @Value("${groma.ws.max-subscribers-per-session:50}") int maxSubscribers) {
-        WsRoomSubscriptionManager manager = new WsRoomSubscriptionManager(maxSubscribers);
-        ROOMS = manager;
-        return manager;
+        return new WsRoomSubscriptionManager(maxSubscribers);
     }
 
     @Bean
     public WsInboundCommandDispatcher wsInboundCommandDispatcher(GromaMcpEnginePort port) {
-        WsInboundCommandDispatcher dispatcher = new WsInboundCommandDispatcher(new PortControlGateway(port));
-        DISPATCHER = dispatcher;
-        PORT = port;
-        return dispatcher;
+        return new WsInboundCommandDispatcher(new PortControlGateway(port));
     }
 
     @Bean
     public DapWebSocketRouter dapWebSocketRouter() {
-        DapWebSocketRouter router = new DapWebSocketRouter();
-        DAP_ROUTER = router;
-        return router;
+        return new DapWebSocketRouter();
     }
 
     /**
-     * 把程序化端点注册进嵌入式 Tomcat 的 WS 容器。
+     * 把程序化端点注册进嵌入式 Tomcat 的 WS 容器（依赖随端点配置下发，不经静态变量）。
      * ServerContainer 属性由容器 SCI 在上下文启动末段设置，因此挂到 WebServerInitializedEvent 后置注册。
      */
     @Bean
     public org.springframework.context.ApplicationListener<org.springframework.boot.web.server.context.WebServerInitializedEvent>
-            gromaWsEndpointRegistrar() {
+            gromaWsEndpointRegistrar(WsRoomSubscriptionManager rooms,
+                                     WsInboundCommandDispatcher dispatcher,
+                                     GromaMcpEnginePort port,
+                                     SimDebugCoordinator debugBridge) {
         return event -> {
             jakarta.servlet.ServletContext servletContext =
                     ((org.springframework.web.context.WebApplicationContext) event.getApplicationContext())
@@ -79,12 +81,10 @@ public class GromaWebSocketConfiguration {
                 return;
             }
             try {
-                container.addEndpoint(ServerEndpointConfig.Builder
-                        .create(SituationEndpoint.class, "/ws/groma/{modelCode}/{sceneCode}/{sessionId}")
-                        .build());
-                container.addEndpoint(ServerEndpointConfig.Builder
-                        .create(DebugEndpoint.class, "/ws/debug/{sessionId}")
-                        .build());
+                container.addEndpoint(endpoint(SituationEndpoint.class, "/ws/groma/{modelCode}/{sceneCode}/{sessionId}",
+                        Map.of(KEY_ROOMS, rooms, KEY_DISPATCHER, dispatcher, KEY_PORT, port)));
+                container.addEndpoint(endpoint(DebugEndpoint.class, "/ws/debug/{sessionId}",
+                        Map.of(KEY_DEBUG_BRIDGE, debugBridge)));
                 LOG.info("[WS] 端点已注册：/ws/groma/{{modelCode}}/{{sceneCode}}/{{sessionId}} 与 /ws/debug/{{sessionId}}");
             } catch (jakarta.websocket.DeploymentException ex) {
                 throw new IllegalStateException("WS 端点注册失败", ex);
@@ -92,8 +92,16 @@ public class GromaWebSocketConfiguration {
         };
     }
 
+    private static ServerEndpointConfig endpoint(Class<? extends Endpoint> type, String path,
+                                                 Map<String, Object> dependencies) {
+        ServerEndpointConfig config = ServerEndpointConfig.Builder.create(type, path).build();
+        config.getUserProperties().putAll(dependencies);
+        return config;
+    }
+
     /** 上行控制指令 → 引擎端口（与 REST/MCP 三通道同一语义） */
     static final class PortControlGateway implements WsInboundCommandDispatcher.SessionControlGateway {
+        private static final ObjectMapper JSON = new ObjectMapper();
         private final GromaMcpEnginePort port;
 
         PortControlGateway(GromaMcpEnginePort port) {
@@ -124,32 +132,54 @@ public class GromaWebSocketConfiguration {
             port.describeSession(sessionId);
         }
 
+        /**
+         * 子树查询：以 Jackson 序列化实例状态（修复原 Map.toString() 输出 {a=1, b=2} 非法 JSON 导致前端
+         * JSON.parse 必然失败的缺陷）。maxDepth 作为合法性与后续层级展开的上界校验保留
+         * （WorldSnapshot 为扁平实例表，无父子边，当前返回根实例自身）。
+         */
         @Override public String querySubtreeJson(String sessionId, String rootId, int maxDepth) {
             WorldSnapshot snapshot = port.getImmutableSnapshot(sessionId);
             Map<String, Object> state = snapshot.instances().get(rootId);
-            return state == null ? "{}" : state.toString();
+            if (state == null) {
+                return "{}";
+            }
+            try {
+                return JSON.writeValueAsString(state);
+            } catch (RuntimeException ex) {
+                LOG.warn("[WS] 子树状态序列化失败 sid={} root={}: {}", sessionId, rootId, ex.getMessage());
+                return "{}";
+            }
         }
     }
 
     /** 态势订阅 + 控制信令端点（URI 模板末段为推演会话 id） */
     public static class SituationEndpoint extends Endpoint {
+
+        private WsRoomSubscriptionManager rooms;
+        private WsInboundCommandDispatcher dispatcher;
+        private GromaMcpEnginePort port;
+
         @Override
         public void onOpen(Session session, EndpointConfig config) {
+            rooms = (WsRoomSubscriptionManager) config.getUserProperties().get(KEY_ROOMS);
+            dispatcher = (WsInboundCommandDispatcher) config.getUserProperties().get(KEY_DISPATCHER);
+            port = (GromaMcpEnginePort) config.getUserProperties().get(KEY_PORT);
             String simSessionId = session.getPathParameters().get("sessionId");
-            if (simSessionId == null || simSessionId.isBlank()
-                    || !ROOMS.registerSubscriber(simSessionId, session)) {
+            if (rooms == null || dispatcher == null || port == null
+                    || simSessionId == null || simSessionId.isBlank()
+                    || !rooms.registerSubscriber(simSessionId, session)) {
                 closeQuietly(session, "ERR:LIMIT_EXCEEDED: 会话不存在或订阅端已满");
                 return;
             }
             session.addMessageHandler((MessageHandler.Whole<String>) raw -> {
-                String reply = DISPATCHER.dispatch(simSessionId, raw);
+                String reply = dispatcher.dispatch(simSessionId, raw);
                 try {
                     session.getBasicRemote().sendText(reply);
                 } catch (IOException ex) {
                     LOG.warn("[WS] 回执发送失败: {}", ex.getMessage());
                 }
                 try {
-                    ROOMS.broadcastSnapshotIfObserved(PORT.getImmutableSnapshot(simSessionId));
+                    rooms.broadcastSnapshotIfObserved(port.getImmutableSnapshot(simSessionId));
                 } catch (RuntimeException gone) {
                     LOG.debug("[WS] 会话 {} 广播跳过: {}", simSessionId, gone.getMessage());
                 }
@@ -158,43 +188,42 @@ public class GromaWebSocketConfiguration {
 
         @Override
         public void onClose(Session session, CloseReason reason) {
-            String simSessionId = lastSegmentFromRequest(session);
-            if (simSessionId != null) {
-                ROOMS.unregisterSubscriber(simSessionId, session.getId());
+            String simSessionId = session.getPathParameters().get("sessionId");
+            if (rooms != null && simSessionId != null) {
+                rooms.unregisterSubscriber(simSessionId, session.getId());
             }
-        }
-
-        private static String lastSegmentFromRequest(Session session) {
-            Map<String, java.util.List<String>> path = session.getRequestParameterMap();
-            // 端点路径模板的参数在容器侧通过 request URI 提取；直接从 request URI 取末段
-            Object requestUri = session.getUserProperties().get("jakarta.websocket.endpoint.remoteAddress");
-            String uri = requestUri != null ? requestUri.toString() : null;
-            if (uri == null && session.getRequestURI() != null) {
-                uri = session.getRequestURI().getPath();
-            }
-            if (uri == null || uri.isBlank()) {
-                return path.isEmpty() ? null : null;
-            }
-            int slash = uri.lastIndexOf('/');
-            return slash >= 0 && slash < uri.length() - 1 ? uri.substring(slash + 1) : null;
         }
     }
 
-    /** DAP 调试通道端点：登记状态回执（完整 DAP 协议栈属调试服务器模块验收项） */
+    /** DAP 调试通道端点：标准 JSON/DAP 报文 → SimDebugCoordinator / DapWebSocketRouter 真实路由 */
     public static class DebugEndpoint extends Endpoint {
+
+        private SimDebugCoordinator debugBridge;
+
         @Override
         public void onOpen(Session session, EndpointConfig config) {
-            String debugSessionId = session.getPathParameters().get("sessionId");
-            session.addMessageHandler((MessageHandler.Whole<String>) raw -> {
-                boolean registered = debugSessionId != null && DAP_ROUTER != null;
-                try {
-                    session.getBasicRemote().sendText(registered
-                            ? "ACK:DEBUG:ATTACHED:" + debugSessionId
-                            : "ERR:DEBUG:NOT_REGISTERED");
-                } catch (IOException ex) {
-                    LOG.warn("[WS][DAP] 回执发送失败: {}", ex.getMessage());
-                }
-            });
+            debugBridge = (SimDebugCoordinator) config.getUserProperties().get(KEY_DEBUG_BRIDGE);
+            String simSessionId = session.getPathParameters().get("sessionId");
+            if (debugBridge == null || simSessionId == null || simSessionId.isBlank()) {
+                closeQuietly(session, "ERR:DEBUG:NOT_REGISTERED");
+                return;
+            }
+            Consumer<String> dapRoute;
+            try {
+                dapRoute = debugBridge.attach(simSessionId, session);
+            } catch (IllegalArgumentException notFound) {
+                closeQuietly(session, "ERR:DEBUG:" + notFound.getMessage());
+                return;
+            }
+            session.addMessageHandler((MessageHandler.Whole<String>) dapRoute::accept);
+        }
+
+        @Override
+        public void onClose(Session session, CloseReason reason) {
+            String simSessionId = session.getPathParameters().get("sessionId");
+            if (debugBridge != null && simSessionId != null) {
+                debugBridge.detach(simSessionId, session);
+            }
         }
     }
 

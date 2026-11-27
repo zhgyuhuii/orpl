@@ -41,17 +41,20 @@ public class ModelPipelineService {
     private final VersionPinnedHotSwapManager hotSwap;
     private final WorkspaceSyncService workspaceSync;
     private final JavacParityVerifier javacVerifier;
+    private final GromaModelRegistry modelRegistry;
     private final Path workspaceRoot;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ModelPipelineService(VersionPinnedHotSwapManager hotSwap,
                                 WorkspaceSyncService workspaceSync,
                                 JavacParityVerifier javacVerifier,
+                                GromaModelRegistry modelRegistry,
                                 @org.springframework.beans.factory.annotation.Value(
                                         "${groma.pipeline.workspace-root:groma-workspace}") String workspaceRoot) {
         this.hotSwap = hotSwap;
         this.workspaceSync = workspaceSync;
         this.javacVerifier = javacVerifier;
+        this.modelRegistry = modelRegistry;
         this.workspaceRoot = Path.of(workspaceRoot);
     }
 
@@ -109,6 +112,8 @@ public class ModelPipelineService {
         hotMounted.removeIf(m -> m.modelCode().equals(modelCode));
         hotMounted.add(new MountedModelView(modelCode, ir.modelVersion() + "", "热挂载",
                 ir.compilePlan().types().size(), ir.compilePlan().processDefs().size(), ir.scenes().size(), "hotswap"));
+        // 通知注册中心：刷新 MCP 动态工具清单（ModelToolRegistrar.onModelMountedAsync）
+        modelRegistry.onModelMounted(modelCode);
         // 5. javac 一致性对拍（JDK 可用时）
         boolean javacParity = false;
         String javacNote;

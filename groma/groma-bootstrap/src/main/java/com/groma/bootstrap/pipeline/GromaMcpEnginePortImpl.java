@@ -9,7 +9,6 @@ import com.groma.base.engine.WorldSnapshot;
 import com.groma.base.engine.runtime.GromaSessionManager;
 import com.groma.base.mcp.manifest.GromaToolManifest;
 import com.groma.base.mcp.port.GromaMcpEnginePort;
-import com.groma.studio.compiler.VersionPinnedHotSwapManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,30 +21,34 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.ServiceLoader;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.DoubleConsumer;
 
 /**
  * MCP 引擎端口的生产实现（阶段 2-E）：会话控制经 GromaSessionManager 单写者线程；
- * 模型解析 = 合包（ServiceLoader）+ 热挂载（版本钉住租约持有，宿主生命周期内不释放）。
+ * 模型解析与会话租约统一委托 {@link GromaModelRegistry}（合包 ServiceLoader + 热挂载租约持有至会话停止）。
+ * <p>
+ * 线程模型（docs/thread-model.md 单写者铁律）：外部干预统一经 {@link #onWriter} 请求桥提交；
+ * 实时模式下等待类接口只经桥读取状态，由事件循环自行推进，严禁 HTTP 线程驱动步进。
+ * </p>
  */
 @Service
 public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
     private static final Logger LOG = LoggerFactory.getLogger(GromaMcpEnginePortImpl.class);
 
+    /** 实时模式下等待条件轮询间隔（读操作经请求桥在写者线程执行，HTTP 线程零 CPU 自旋） */
+    private static final long REALTIME_WAIT_POLL_MS = 20L;
+
     private final GromaSessionManager sessions;
-    private final VersionPinnedHotSwapManager hotSwap;
+    private final GromaModelRegistry registry;
     private final com.groma.base.websocket.WsRoomSubscriptionManager rooms;
     private final ObjectMapper mapper = new ObjectMapper();
-    /** 热挂载模型的运行时缓存（modelCode → runtime）；租约持有至宿主停止 */
-    private final ConcurrentHashMap<String, GromaModuleRuntime> hotRuntimes = new ConcurrentHashMap<>();
 
     public GromaMcpEnginePortImpl(GromaSessionManager sessionManager,
-                                  VersionPinnedHotSwapManager hotSwapManager,
+                                  GromaModelRegistry modelRegistry,
                                   com.groma.base.websocket.WsRoomSubscriptionManager roomManager) {
         this.sessions = sessionManager;
-        this.hotSwap = hotSwapManager;
+        this.registry = modelRegistry;
         this.rooms = roomManager;
     }
 
@@ -54,19 +57,15 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
     @Override
     public List<MountedModelMetadata> listMountedModels() {
         List<MountedModelMetadata> out = new ArrayList<>();
-        for (GromaModuleRuntime runtime : allRuntimes()) {
-            out.add(metadataOf(runtime));
+        for (GromaModelRegistry.MountedModel mounted : registry.listMounted()) {
+            out.add(metadataOf(mounted.runtime()));
         }
         return out;
     }
 
     @Override
     public Optional<MountedModelMetadata> findMountedModel(String modelCode, String expectedVersionOrNull) {
-        return allRuntimes().stream()
-                .filter(r -> r.modelCode().equals(modelCode))
-                .filter(r -> expectedVersionOrNull == null || r.modelVersion().equals(expectedVersionOrNull))
-                .findFirst()
-                .map(this::metadataOf);
+        return registry.find(modelCode, expectedVersionOrNull).map(m -> metadataOf(m.runtime()));
     }
 
     // ---------------- 会话生命周期控制 ----------------
@@ -79,8 +78,7 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
     @Override
     public SessionSummary startSession(String modelCode, String sceneCode, Map<String, Object> initialOverrides,
                                        Long seed, boolean startPaused) {
-        GromaModuleRuntime runtime = resolveRuntime(modelCode);
-        String sessionId = sessions.startSession(runtime, sceneCode, initialOverrides, seed, startPaused, null);
+        String sessionId = registry.startSession(modelCode, sceneCode, initialOverrides, seed, startPaused);
         return describeSession(sessionId);
     }
 
@@ -121,6 +119,11 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
         return describeSession(sessionId);
     }
 
+    /**
+     * 等待会话到达目标步 / 指定过程结束。
+     * 手动模式（loopGroup 为空）：调用线程即写者线程，直接逐步推进；
+     * 实时模式：解除暂停交给事件循环推进，HTTP 线程仅经请求桥轮询状态（不违反单写者铁律，无 CPU 自旋）。
+     */
     @Override
     public WaitOutcome waitForSessionCondition(String sessionId, Long targetTick, String waitForProcessId,
                                                String conditionExpr, long timeoutMs,
@@ -128,27 +131,39 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
         if (conditionExpr != null && !conditionExpr.isBlank()) {
             throw new IllegalArgumentException("WAIT_CONDITION_UNSUPPORTED: 条件表达式等待暂未开放，请用 targetTick 或 waitForProcessId");
         }
+        boolean realtime = sessions.isRealtime();
         long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
-        while (System.currentTimeMillis() < deadline) {
-            GromaWorldContext ctx = sessions.require(sessionId).session();
-            if (targetTick != null && ctx.getTickIndex() >= targetTick) {
-                return new WaitOutcome("REACHED_STEP", ctx.getTickIndex(), ctx.currentWorldTimeMs(), "RUNNING");
-            }
-            if (waitForProcessId != null) {
-                for (GromaProcessTask task : ctx.activeProcesses()) {
-                    if (waitForProcessId.equals(task.getProcessInstanceId()) && task.finished()) {
-                        return new WaitOutcome("PROCESS_FINISHED", ctx.getTickIndex(), ctx.currentWorldTimeMs(),
-                                task.getStatus());
+        if (realtime) {
+            sessions.resume(sessionId);
+        }
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                BridgeRead read = readViaWriter(sessionId, targetTick, waitForProcessId);
+                if (read.outcome() != null) {
+                    return read.outcome();
+                }
+                if (progressCallback != null) {
+                    progressCallback.accept(read.tickIndex());
+                }
+                if (realtime) {
+                    try {
+                        Thread.sleep(REALTIME_WAIT_POLL_MS);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                        break;
                     }
+                } else {
+                    // 手动模式：调用线程即写者线程，桥指令在 drain 时立即执行后直接推进一步
+                    sessions.stepSession(sessionId, 1);
                 }
             }
-            if (progressCallback != null) {
-                progressCallback.accept(ctx.getTickIndex());
+            BridgeRead finalRead = readViaWriter(sessionId, targetTick, waitForProcessId);
+            return new WaitOutcome("TIMEOUT", finalRead.tickIndex(), finalRead.worldTimeMs(), "RUNNING");
+        } finally {
+            if (realtime) {
+                sessions.pause(sessionId);
             }
-            sessions.stepSession(sessionId, 1);
         }
-        GromaWorldContext ctx = sessions.require(sessionId).session();
-        return new WaitOutcome("TIMEOUT", ctx.getTickIndex(), ctx.currentWorldTimeMs(), "RUNNING");
     }
 
     @Override
@@ -234,10 +249,9 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
     public ProcessExecutionOutcome executeProcessStateless(String modelCode, String processRef,
                                                            Map<String, Object> validatedInputs,
                                                            long wallClockTimeoutMs) {
-        GromaModuleRuntime runtime = resolveRuntime(modelCode);
-        String scene = runtime.scenes().isEmpty() ? null : runtime.scenes().get(0).sceneCode();
-        String sessionId = sessions.startSession(runtime, scene, Map.of(), null, true, null);
+        String sessionId = registry.startSession(modelCode, null, Map.of(), null, true);
         try {
+            GromaModuleRuntime runtime = sessions.require(sessionId).runtime();
             return runProcessAndCollect(sessionId, null, processRef, validatedInputs, runtime, wallClockTimeoutMs);
         } finally {
             sessions.stopSession(sessionId);
@@ -253,7 +267,51 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
 
     // ---------------- 内部 ----------------
 
-    /** 三大 MCP 工作流之二：无会话/会话内执行过程并收集输出与事件（单写者线程逐步驱动至任务结束） */
+    /** 单写者桥上的轻量状态读取（tick / 过程完成判定），手动模式随 drain 立即执行，实时模式由事件循环消费 */
+    private record BridgeRead(long tickIndex, long worldTimeMs, WaitOutcome outcome) {}
+
+    private BridgeRead readViaWriter(String sessionId, Long targetTick, String waitForProcessId) {
+        var handle = sessions.require(sessionId);
+        try {
+            var future = handle.session().submitCommand(world -> {
+                GromaWorldContext ctx = (GromaWorldContext) world;
+                WaitOutcome outcome = null;
+                if (targetTick != null && ctx.getTickIndex() >= targetTick) {
+                    outcome = new WaitOutcome("REACHED_STEP", ctx.getTickIndex(), ctx.currentWorldTimeMs(), "RUNNING");
+                } else if (waitForProcessId != null) {
+                    for (GromaProcessTask task : ctx.activeProcesses()) {
+                        if (waitForProcessId.equals(task.getProcessInstanceId()) && task.finished()) {
+                            outcome = new WaitOutcome("PROCESS_FINISHED", ctx.getTickIndex(), ctx.currentWorldTimeMs(),
+                                    task.getStatus());
+                            break;
+                        }
+                    }
+                }
+                return new BridgeRead(ctx.getTickIndex(), ctx.currentWorldTimeMs(), outcome);
+            }, 5_000L);
+            if (!sessions.isRealtime()) {
+                handle.session().drainRequests();
+            }
+            return future.get(6_000L, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.ExecutionException ex) {
+            if (ex.getCause() instanceof RuntimeException runtimeCause) {
+                throw runtimeCause;
+            }
+            throw new IllegalStateException("WAIT_READ_FAILED: " + ex.getCause().getMessage(), ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("WAIT_INTERRUPTED", ex);
+        } catch (java.util.concurrent.TimeoutException ex) {
+            throw new IllegalStateException("WAIT_READ_TIMEOUT: 单写者桥读取超时", ex);
+        }
+    }
+
+    /**
+     * 三大 MCP 工作流之二：无会话/会话内执行过程并收集输出与事件。
+     * 组合监听器安装 + launch 一次经单写者桥提交并保持到采集结束；
+     * 推进按会话模式选择驱动方式：手动模式调用线程逐步推进（调用线程即写者）；
+     * 实时模式一次突发配额交给事件循环全速跑完，HTTP 线程仅桥读轮询（不违反单写者铁律）。
+     */
     private ProcessExecutionOutcome runProcessAndCollect(String sessionId, String instanceIdOrNull,
                                                          String processRef, Map<String, Object> inputs,
                                                          GromaModuleRuntime runtime, long wallClockTimeoutMs) {
@@ -263,83 +321,154 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
         if (defKey == null) {
             throw new IllegalArgumentException("PROCESS_NOT_FOUND: " + processRef);
         }
-        GromaProcessTask task = host == null
-                ? runtime.newProcess(defKey, ctx, null, inputs == null ? Map.of() : inputs)
-                : runtime.startManually(defKey, ctx, host, inputs == null ? Map.of() : inputs);
-        if (task == null) {
-            task = runtime.newProcess(defKey, ctx, host, inputs == null ? Map.of() : inputs);
-        }
-        if (task == null) {
-            throw new IllegalArgumentException("PROCESS_NOT_STARTABLE: " + processRef);
-        }
         List<WorldSnapshot.SimEventRecord> events = new ArrayList<>();
-        ctx.setTraceListener(new com.groma.base.engine.GromaTraceListener() {
-            @Override public void onProcessStarted(GromaWorldContext c, GromaProcessTask t) { }
-            @Override public void onProcessFinished(GromaWorldContext c, GromaProcessTask t) { }
+        var handle = sessions.require(sessionId);
+
+        // 1. 写者线程上：组合既有监听器（调试桥可能已安装）、启动过程、记录 processId
+        record Launched(String processId, com.groma.base.engine.GromaTraceListener previous) {}
+        Launched launched = onWriter(sessionId, world -> {
+            GromaWorldContext writerCtx = (GromaWorldContext) world;
+            com.groma.base.engine.GromaTraceListener previous = writerCtx.traceListener();
+            writerCtx.setTraceListener(compositeListener(previous, events));
+            GromaProcessTask task = host == null
+                    ? runtime.newProcess(defKey, writerCtx, null, inputs == null ? Map.of() : inputs)
+                    : runtime.startManually(defKey, writerCtx, host, inputs == null ? Map.of() : inputs);
+            if (task == null) {
+                task = runtime.newProcess(defKey, writerCtx, host, inputs == null ? Map.of() : inputs);
+            }
+            if (task == null) {
+                writerCtx.setTraceListener(previous);
+                throw new IllegalArgumentException("PROCESS_NOT_STARTABLE: " + processRef);
+            }
+            writerCtx.launch(task);
+            return new Launched(task.getProcessInstanceId(), previous);
+        });
+
+        // 2. 驱动至任务结束（不触碰 ctx 内部状态，只经桥轮询 finished）
+        GromaProcessTask finished = driveUntilFinished(handle, launched.processId(), wallClockTimeoutMs);
+
+        // 3. 写者线程上：卸载组合监听器、导出过程现场
+        record Export(long elapsedMs, Map<String, Object> runtimeState) {}
+        Export export = onWriter(sessionId, world -> {
+            GromaWorldContext writerCtx = (GromaWorldContext) world;
+            writerCtx.setTraceListener(launched.previous());
+            for (GromaProcessTask task : writerCtx.activeProcesses()) {
+                if (launched.processId().equals(task.getProcessInstanceId())) {
+                    return new Export(task.getElapsedMs(), task.exportRuntime());
+                }
+            }
+            return new Export(finished == null ? 0L : finished.getElapsedMs(),
+                    finished == null ? Map.of() : finished.exportRuntime());
+        });
+        return new ProcessExecutionOutcome(processRef, instanceIdOrNull == null, sessionId,
+                export.elapsedMs(), export.runtimeState(), List.copyOf(events));
+    }
+
+    /** 驱动会话直至目标过程结束或超时；返回结束时的任务快照（找不到则 null） */
+    private GromaProcessTask driveUntilFinished(GromaSessionManager.SessionHandle handle,
+                                                String processId, long wallClockTimeoutMs) {
+        boolean realtime = sessions.isRealtime();
+        if (realtime) {
+            // 突发配额交给单写者事件循环全速推进，跑完自动暂停
+            handle.session().resumeForBurst(Integer.MAX_VALUE);
+        }
+        long deadline = System.currentTimeMillis() + Math.max(1_000L, wallClockTimeoutMs);
+        while (System.currentTimeMillis() < deadline) {
+            GromaProcessTask task = onWriter(handle.sessionId(), world -> {
+                GromaWorldContext writerCtx = (GromaWorldContext) world;
+                for (GromaProcessTask t : writerCtx.activeProcesses()) {
+                    if (processId.equals(t.getProcessInstanceId())) {
+                        return t.finished() ? t : null;
+                    }
+                }
+                return null; // 已不在活跃表 = 已结束
+            });
+            if (task != null) {
+                return task;
+            }
+            if (realtime) {
+                try {
+                    Thread.sleep(REALTIME_WAIT_POLL_MS);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            } else {
+                sessions.stepSession(handle.sessionId(), 1);
+            }
+        }
+        return null;
+    }
+
+    /** 组合监听器：事件采集 + 透传既有监听器（调试桥） */
+    private com.groma.base.engine.GromaTraceListener compositeListener(
+            com.groma.base.engine.GromaTraceListener previous, List<WorldSnapshot.SimEventRecord> events) {
+        return new com.groma.base.engine.GromaTraceListener() {
+            @Override public void onProcessStarted(GromaWorldContext c, GromaProcessTask t) {
+                if (previous != null) {
+                    previous.onProcessStarted(c, t);
+                }
+            }
+            @Override public void onProcessFinished(GromaWorldContext c, GromaProcessTask t) {
+                if (previous != null) {
+                    previous.onProcessFinished(c, t);
+                }
+            }
             @Override public void onEvent(GromaWorldContext c, long tick, boolean silent,
                                           WorldSnapshot.SimEventRecord event) {
                 events.add(event);
+                if (previous != null) {
+                    previous.onEvent(c, tick, silent, event);
+                }
             }
             @Override public void onTriggerFired(GromaWorldContext c, long tick,
-                                                  WorldSnapshot.SimEventRecord event, BaseSimEntity context,
-                                                  BaseSimEntity hostEntity, String targetDefKey) { }
+                                                 WorldSnapshot.SimEventRecord event, BaseSimEntity context,
+                                                 BaseSimEntity hostEntity, String targetDefKey) {
+                if (previous != null) {
+                    previous.onTriggerFired(c, tick, event, context, hostEntity, targetDefKey);
+                }
+            }
             @Override public void onDefaultStartFired(GromaWorldContext c, long tick, BaseSimEntity created,
-                                                      BaseSimEntity hostEntity, String targetDefKey) { }
-            @Override public void onProblem(GromaWorldContext c, long tick, String message) { }
-        });
-        ctx.launch(task);
-        long deadline = System.currentTimeMillis() + Math.max(1_000L, wallClockTimeoutMs);
-        while (!task.finished() && System.currentTimeMillis() < deadline) {
-            sessions.stepSession(sessionId, 1);
-        }
-        return new ProcessExecutionOutcome(processRef, instanceIdOrNull == null, sessionId,
-                task.getElapsedMs(), task.exportRuntime(), List.copyOf(events));
+                                                      BaseSimEntity hostEntity, String targetDefKey) {
+                if (previous != null) {
+                    previous.onDefaultStartFired(c, tick, created, hostEntity, targetDefKey);
+                }
+            }
+            @Override public void onProblem(GromaWorldContext c, long tick, String message) {
+                if (previous != null) {
+                    previous.onProblem(c, tick, message);
+                }
+            }
+        };
     }
 
-    /** 模型解析：合包（宿主类路径）→ 热挂载（租约持有） */
-    private GromaModuleRuntime resolveRuntime(String modelCode) {
-        for (GromaModuleRuntime runtime : ServiceLoader.load(GromaModuleRuntime.class,
-                GromaMcpEnginePortImpl.class.getClassLoader())) {
-            if (runtime.modelCode().equals(modelCode)) {
-                return runtime;
+    /** 外部干预统一经单写者桥执行（跨线程可见性与推演互斥） */
+    private <R> R onWriter(String sessionId, java.util.function.Function<GromaWorldContext, R> operation) {
+        var handle = sessions.require(sessionId);
+        try {
+            var future = handle.session()
+                    .submitCommand(world -> operation.apply((GromaWorldContext) world), 30_000L);
+            // 手动模式：调用线程即写者线程，立即执行桥指令（实时模式下由推演循环 drain）
+            if (!sessions.isRealtime()) {
+                handle.session().drainRequests();
             }
+            return future.get(35_000L, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.ExecutionException ex) {
+            if (ex.getCause() instanceof RuntimeException runtimeCause) {
+                throw runtimeCause;
+            }
+            throw new IllegalStateException("WRITER_FAILED: " + ex.getCause().getMessage(), ex);
+        } catch (java.util.concurrent.TimeoutException ex) {
+            throw new IllegalStateException("WRITER_TIMEOUT: 单写者桥 30s 未完成", ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("WRITER_INTERRUPTED", ex);
         }
-        return hotRuntimes.computeIfAbsent(modelCode, code -> {
-            try (VersionPinnedHotSwapManager.SessionModelLease lease = hotSwap.acquireLatestSessionLease(code)) {
-                // 宿主运行期内保持引用：租约持有至 unmount（会话租约三级在 GromaModelRegistry 完善）
-                var discovered = ServiceLoader.load(GromaModuleRuntime.class, lease.loader()).iterator();
-                if (discovered.hasNext()) {
-                    return discovered.next();
-                }
-                // 兜底：直接读 services 登记文件并按类名实例化（部分嵌入式容器下 ServiceLoader 迭代不可用时）
-                java.net.URL servicesFile = lease.loader()
-                        .getResource("META-INF/services/com.groma.base.engine.GromaModuleRuntime");
-                if (servicesFile != null) {
-                    String fqcn;
-                    try (java.io.InputStream in = servicesFile.openStream()) {
-                        fqcn = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).lines()
-                                .map(String::trim).filter(l -> !l.isEmpty() && !l.startsWith("#"))
-                                .findFirst().orElse("");
-                    }
-                    if (!fqcn.isBlank()) {
-                        return (GromaModuleRuntime) lease.loadClass(fqcn).getDeclaredConstructor().newInstance();
-                    }
-                }
-                throw new java.util.NoSuchElementException("模型 " + code + " 的 services 登记不可读");
-            } catch (IOException | RuntimeException | ReflectiveOperationException ex) {
-                throw new IllegalStateException("MODEL_NOT_FOUND: 模型 " + code + " 未挂载（合包与热挂载均未找到）", ex);
-            }
-        });
     }
 
-    private List<GromaModuleRuntime> allRuntimes() {
-        List<GromaModuleRuntime> out = new ArrayList<>();
-        for (GromaModuleRuntime runtime : ServiceLoader.load(GromaModuleRuntime.class,
-                GromaMcpEnginePortImpl.class.getClassLoader())) {
-            out.add(runtime);
-        }
-        out.addAll(hotRuntimes.values());
-        return out;
+    private SessionSummary summary(GromaSessionManager.SessionSummary s) {
+        return new SessionSummary(s.sessionId(), s.modelCode(), s.modelVersion(), s.sceneCode(), s.status(),
+                s.tickIndex(), s.worldTimeMs(), s.speed(), s.instanceCount(), s.activeProcessCount());
     }
 
     private MountedModelMetadata metadataOf(GromaModuleRuntime runtime) {
@@ -405,32 +534,5 @@ public class GromaMcpEnginePortImpl implements GromaMcpEnginePort {
             }
         }
         throw new IllegalArgumentException("STATE_NOT_FOUND: " + meta.typeName() + " 无枚举成员 " + targetStateLabel);
-    }
-
-    /** 外部干预统一经单写者桥执行（跨线程可见性与推演互斥，外部干预语义的落地） */
-    private <R> R onWriter(String sessionId, java.util.function.Function<GromaWorldContext, R> operation) {
-        var handle = sessions.require(sessionId);
-        try {
-            var future = handle.session()
-                    .submitCommand(world -> operation.apply((GromaWorldContext) world), 30_000L);
-            // 手动模式：调用线程即写者线程，立即执行桥指令（实时模式下由推演循环 drain）
-            handle.session().drainRequests();
-            return future.get(35_000L, java.util.concurrent.TimeUnit.MILLISECONDS);
-        } catch (java.util.concurrent.ExecutionException ex) {
-            if (ex.getCause() instanceof RuntimeException runtimeCause) {
-                throw runtimeCause;
-            }
-            throw new IllegalStateException("WRITER_FAILED: " + ex.getCause().getMessage(), ex);
-        } catch (java.util.concurrent.TimeoutException ex) {
-            throw new IllegalStateException("WRITER_TIMEOUT: 单写者桥 30s 未完成", ex);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("WRITER_INTERRUPTED", ex);
-        }
-    }
-
-    private SessionSummary summary(GromaSessionManager.SessionSummary s) {
-        return new SessionSummary(s.sessionId(), s.modelCode(), s.modelVersion(), s.sceneCode(), s.status(),
-                s.tickIndex(), s.worldTimeMs(), s.speed(), s.instanceCount(), s.activeProcessCount());
     }
 }

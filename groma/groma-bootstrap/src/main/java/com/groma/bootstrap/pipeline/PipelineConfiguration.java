@@ -39,10 +39,19 @@ public class PipelineConfiguration {
         return new JavacParityVerifier();
     }
 
-    /** 会话管理器：手动 Tick 模式（loopGroup 空 = 调用线程逐步推进，结果确定） */
+    /**
+     * 会话管理器：event-loop-threads &gt; 0 时创建单写者事件循环组进入实时模式（会话按一致性哈希固定绑定，
+     * 事件循环组随会话管理器 close 一并关闭）；默认 0 保持手动 Tick 模式（调用线程逐步推进，结果确定）。
+     * max-concurrent-sessions 接通 groma.engine 配置（默认 200，修复原先硬编码 8 与 yml 配置脱节的断层）。
+     */
     @Bean(destroyMethod = "close")
-    public com.groma.base.engine.runtime.GromaSessionManager gromaSessionManager() {
-        return new com.groma.base.engine.runtime.GromaSessionManager(null, 8);
+    public com.groma.base.engine.runtime.GromaSessionManager gromaSessionManager(
+            @Value("${groma.engine.event-loop-threads:0}") int eventLoopThreads,
+            @Value("${groma.engine.max-concurrent-sessions:200}") int maxConcurrentSessions) {
+        com.groma.base.engine.TickEventLoopGroup loopGroup = eventLoopThreads > 0
+                ? new com.groma.base.engine.TickEventLoopGroup(eventLoopThreads)
+                : null;
+        return new com.groma.base.engine.runtime.GromaSessionManager(loopGroup, maxConcurrentSessions);
     }
 
     /** Swagger 分组：模型构建 / 会话 REST 与 MCP 端点各自成组（设计书 2-E 第 5 项） */

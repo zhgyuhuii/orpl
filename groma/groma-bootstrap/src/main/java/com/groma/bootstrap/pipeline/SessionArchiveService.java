@@ -27,13 +27,16 @@ public class SessionArchiveService {
     private static final Logger LOG = LoggerFactory.getLogger(SessionArchiveService.class);
 
     private final GromaSessionManager sessions;
+    private final GromaModelRegistry registry;
     private final ArchiveCheckpointCoordinator coordinator = new ArchiveCheckpointCoordinator();
     private final ObjectMapper mapper = new ObjectMapper();
     private final Path archiveRoot;
 
     public SessionArchiveService(GromaSessionManager sessions,
+                                 GromaModelRegistry registry,
                                  @Value("${groma.pipeline.workspace-root:groma-workspace}") String workspaceRoot) {
         this.sessions = sessions;
+        this.registry = registry;
         this.archiveRoot = Path.of(workspaceRoot, "archives");
     }
 
@@ -59,16 +62,16 @@ public class SessionArchiveService {
     }
 
     /**
-     * 载入落盘存档：以存档内的模型/场景重新开桌并恢复到存档拍，返回新会话 id
+     * 载入落盘存档：以存档内的模型/场景重新开桌并恢复到存档拍，返回新会话 id。
+     * 模型解析统一走 {@link GromaModelRegistry}（热挂载模型同样可恢复）。
      */
     public String restoreArchived(Path archiveFile, long maxStepsOnWallClockMs) {
         try {
             SimulationArchiveBundle bundle = mapper.readValue(Files.readString(archiveFile, StandardCharsets.UTF_8),
                     SimulationArchiveBundle.class);
             var header = bundle.taskPart();
-            var runtime = resolveRuntimeOf(header.modelCode());
-            String sessionId = sessions.startSession(runtime, header.sceneCode(), java.util.Map.of(),
-                    header.rootSeed(), true, null);
+            String sessionId = registry.startSession(header.modelCode(), header.sceneCode(), java.util.Map.of(),
+                    header.rootSeed(), true);
             sessions.require(sessionId).session().restoreFromArchive(bundle);
             return sessionId;
         } catch (IOException ex) {
@@ -101,7 +104,9 @@ public class SessionArchiveService {
     }
 
     /**
-     * 并发超限时的第三级回收：按最近访问时间挑最冷会话存档回收（供建会话前调用）
+     * 并发超限时的第三级回收：按最近访问时间挑最冷会话存档回收（供建会话前调用）。
+     * 驱逐优先级：最后访问时间最早者优先；同访问时间下非 RUNNING（已暂停/空闲）优先。
+     * 修复原实现按 tickIndex 升序挑选导致"刚创建的活跃会话被当最冷会话驱逐"的逻辑反转缺陷。
      *
      * @return 被回收的会话 id；无可回收会话返回 null
      */
@@ -111,7 +116,8 @@ public class SessionArchiveService {
             return null;
         }
         String coldest = summaries.stream()
-                .min(Comparator.comparingLong(GromaSessionManager.SessionSummary::tickIndex))
+                .min(Comparator.comparingLong(GromaSessionManager.SessionSummary::lastAccessEpochMs)
+                        .thenComparing(s -> s.status().equals("RUNNING") ? 1L : 0L))
                 .map(GromaSessionManager.SessionSummary::sessionId)
                 .orElse(null);
         if (coldest == null) {
@@ -119,15 +125,5 @@ public class SessionArchiveService {
         }
         archiveAndEvict(coldest);
         return coldest;
-    }
-
-    private com.groma.base.engine.GromaModuleRuntime resolveRuntimeOf(String modelCode) {
-        for (com.groma.base.engine.GromaModuleRuntime runtime : java.util.ServiceLoader.load(
-                com.groma.base.engine.GromaModuleRuntime.class, SessionArchiveService.class.getClassLoader())) {
-            if (runtime.modelCode().equals(modelCode)) {
-                return runtime;
-            }
-        }
-        throw new IllegalStateException("MODEL_NOT_FOUND: 存档模型 " + modelCode + " 未挂载，无法恢复");
     }
 }

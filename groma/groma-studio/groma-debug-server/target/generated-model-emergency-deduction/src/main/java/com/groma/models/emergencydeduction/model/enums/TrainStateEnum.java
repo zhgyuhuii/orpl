@@ -20,7 +20,7 @@ public enum TrainStateEnum {
     /**
      * 行驶
      */
-    RUNNING("行驶"),
+    RUN("行驶"),
 
     /**
      * 迫停

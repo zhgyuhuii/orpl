@@ -1,5 +1,6 @@
 package com.groma.bootstrap;
 
+import com.groma.bootstrap.pipeline.GromaModelRegistry;
 import com.groma.bootstrap.pipeline.ModelPipelineService;
 import com.groma.studio.compiler.AtomicBytecodeCache;
 import com.groma.studio.compiler.EcjInMemoryCompiler;
@@ -46,8 +47,10 @@ class ModelPipelineIntegrationTest {
                     Files.createTempDirectory("groma-bc-cache"), "ecj", "test");
             VersionPinnedHotSwapManager hotSwap = new VersionPinnedHotSwapManager(
                     new EcjInMemoryCompiler(), cache, ModelPipelineIntegrationTest.class.getClassLoader());
+            GromaModelRegistry registry = new GromaModelRegistry(
+                    new com.groma.base.engine.runtime.GromaSessionManager(null, 8), hotSwap, nullRegistrar());
             ModelPipelineService service = new ModelPipelineService(
-                    hotSwap, new WorkspaceSyncService(), new JavacParityVerifier(), workspace.toString());
+                    hotSwap, new WorkspaceSyncService(), new JavacParityVerifier(), registry, workspace.toString());
 
             ModelPipelineService.BuildReport report =
                     service.buildFromCorpus(corpus.resolve("data-a.json"), corpus.resolve("data-b.json"));
@@ -87,5 +90,17 @@ class ModelPipelineIntegrationTest {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
             }
         }
+    }
+
+    /** 单测环境无 MCP 自动装配：注册中心回调降级为空操作 */
+    private static org.springframework.beans.factory.ObjectProvider<com.groma.base.mcp.registry.ModelToolRegistrar> nullRegistrar() {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override public com.groma.base.mcp.registry.ModelToolRegistrar getIfAvailable() {
+                return null;
+            }
+            @Override public com.groma.base.mcp.registry.ModelToolRegistrar getObject() {
+                throw new IllegalStateException("单测未装配 ModelToolRegistrar");
+            }
+        };
     }
 }

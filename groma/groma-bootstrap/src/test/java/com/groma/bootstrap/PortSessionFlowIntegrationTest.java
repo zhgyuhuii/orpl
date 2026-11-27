@@ -48,11 +48,12 @@ class PortSessionFlowIntegrationTest {
             VersionPinnedHotSwapManager hotSwap = new VersionPinnedHotSwapManager(new EcjInMemoryCompiler(),
                     new AtomicBytecodeCache(Files.createTempDirectory("groma-bc"), "ecj", "test"),
                     PortSessionFlowIntegrationTest.class.getClassLoader());
+            var registry = new com.groma.bootstrap.pipeline.GromaModelRegistry(sessions, hotSwap, nullRegistrar());
             ModelPipelineService pipeline = new ModelPipelineService(hotSwap, new WorkspaceSyncService(),
-                    new JavacParityVerifier(), workspace.toString());
-            var port = new com.groma.bootstrap.pipeline.GromaMcpEnginePortImpl(sessions, hotSwap,
+                    new JavacParityVerifier(), registry, workspace.toString());
+            var port = new com.groma.bootstrap.pipeline.GromaMcpEnginePortImpl(sessions, registry,
                     new com.groma.base.websocket.WsRoomSubscriptionManager(50));
-            var archives = new SessionArchiveService(sessions, workspace.toString());
+            var archives = new SessionArchiveService(sessions, registry, workspace.toString());
 
             // 1. 构建 → 热挂载
             var report = pipeline.buildFromCorpus(corpus.resolve("data-a.json"), corpus.resolve("data-b.json"));
@@ -101,5 +102,17 @@ class PortSessionFlowIntegrationTest {
         static SimulationArchiveBundle exportOf(com.groma.base.engine.GromaWorldContext ctx) {
             return COORDINATOR.createCheckpointAtStepBoundary(ctx);
         }
+    }
+
+    /** 单测环境无 MCP 自动装配：注册中心回调降级为空操作 */
+    private static org.springframework.beans.factory.ObjectProvider<com.groma.base.mcp.registry.ModelToolRegistrar> nullRegistrar() {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override public com.groma.base.mcp.registry.ModelToolRegistrar getIfAvailable() {
+                return null;
+            }
+            @Override public com.groma.base.mcp.registry.ModelToolRegistrar getObject() {
+                throw new IllegalStateException("单测未装配 ModelToolRegistrar");
+            }
+        };
     }
 }

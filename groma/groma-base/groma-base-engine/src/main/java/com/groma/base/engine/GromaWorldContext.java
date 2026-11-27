@@ -98,7 +98,8 @@ public abstract class GromaWorldContext extends AbstractWorldSession
         this.traceListener = listener;
     }
 
-    final GromaTraceListener traceListener() {
+    /** 当前追踪监听器（宿主做监听器组合时读取；调用方需自行保证与 setTraceListener 的写者线程互斥） */
+    public final GromaTraceListener traceListener() {
         return traceListener;
     }
 

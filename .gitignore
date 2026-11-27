@@ -1,0 +1,39 @@
+# --- macOS ---
+.DS_Store
+
+# --- Maven ---
+target/
+out/
+*.class
+.m2/repository/
+.flattened-pom.xml
+
+# --- IntelliJ IDEA ---
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# --- 前端 ---
+node_modules/
+
+# --- 运行期产物 ---
+*.log
+# groma workspace-sync 运行时生成的工作区（含生成的模型工程），不入库
+groma/groma-bootstrap/groma-workspace/
+
+# --- 2026-11-27 压扁历史后仅保留 groma；以下为留在本地、不入库的目录与文件 ---
+/ods/
+/ods-dp/
+/ods-hci/
+/orp-service-proxy/
+/orpl-backend/
+/orpl-front/
+/docs/
+/model_schema_digest.md
+/model_schema_digest2.md
+/历史记录
+/*.textClipping
+/*.docx
+/.dockerignore
+/.gitlab-ci.yml

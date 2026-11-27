@@ -65,7 +65,7 @@ public final class Scene13ConvertToRunProcessTask extends GromaProcessTask {
         switch (pc) {
             case 0 -> {
                 // 输出转换：本对象.列车状态1 → 行驶
-                self.setTrainState1(TrainStateEnum.RUNNING, ctx);
+                self.setTrainState1(TrainStateEnum.RUN, ctx);
             }
             default -> throw new IllegalStateException("未知的过程节点: pc=" + pc);
         }

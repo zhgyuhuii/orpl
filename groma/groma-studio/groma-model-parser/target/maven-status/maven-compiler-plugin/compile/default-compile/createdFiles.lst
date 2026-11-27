@@ -21,6 +21,7 @@ com/groma/studio/ir/GromaModuleIR$FieldIR.class
 com/groma/studio/ir/GromaModuleIR$ViewGraphIR.class
 com/groma/studio/ir/CompilePlanIR$BuiltinIR.class
 com/groma/studio/parser/AbModelMergerAndParser$Worker$ViewCtx.class
+com/groma/studio/parser/StaticModelValidator$1ProbBranch.class
 com/groma/studio/ir/CompilePlanIR$ListSpec.class
 com/groma/studio/ir/CompilePlanIR$ObjectSpec.class
 com/groma/studio/ir/CompilePlanIR$ConditionRuleIR.class

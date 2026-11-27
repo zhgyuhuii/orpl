@@ -1,11 +1,12 @@
-com/groma/studio/debug/DapWebSocketRouter.class
 com/groma/studio/debug/ClockFreezeCompensator.class
-com/groma/studio/debug/DapProtocolModels$BreakpointSpec.class
 com/groma/studio/debug/DapProtocolModels$StackFrameDTO.class
-com/groma/studio/debug/DapProtocolModels$DapRequest.class
 com/groma/studio/debug/VirtualThreadDebugSession.class
 com/groma/studio/debug/DapProtocolModels$DapStoppedEvent.class
 com/groma/studio/debug/VirtualThreadDebugSession$StepResumeAction.class
+com/groma/studio/debug/DapWebSocketRouter.class
+com/groma/studio/debug/DapProtocolModels$BreakpointSpec.class
+com/groma/studio/debug/DapProtocolModels$DapRequest.class
+com/groma/studio/debug/DapWebSocketRouter$VariableMutation.class
 com/groma/studio/debug/WarmJdiSandboxPool.class
 com/groma/studio/debug/WarmJdiSandboxPool$SandboxLease.class
 com/groma/studio/debug/DapProtocolModels$DapResponse.class

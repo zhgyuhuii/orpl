@@ -1,6 +1,6 @@
 package com.groma.bootstrap.pipeline;
 
-import com.groma.studio.compiler.GeneratedModuleBundle;
+import com.groma.studio.codegen.GeneratedModuleBundle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

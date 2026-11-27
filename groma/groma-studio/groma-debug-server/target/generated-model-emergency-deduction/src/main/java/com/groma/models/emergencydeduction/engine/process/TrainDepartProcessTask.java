@@ -105,7 +105,7 @@ public final class TrainDepartProcessTask extends GromaProcessTask {
             case 1 -> {
                 self.setCurrentSpeed(frame.getOut1(), ctx);
                 // 输出转换：本对象.列车状态 → 行驶
-                self.setTrainState(TrainStateEnum.RUNNING, ctx);
+                self.setTrainState(TrainStateEnum.RUN, ctx);
             }
             default -> throw new IllegalStateException("未知的过程节点: pc=" + pc);
         }

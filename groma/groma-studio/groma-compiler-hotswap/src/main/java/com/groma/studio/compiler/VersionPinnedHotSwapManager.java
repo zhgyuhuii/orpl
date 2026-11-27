@@ -63,6 +63,15 @@ public final class VersionPinnedHotSwapManager {
             return activeSessions.get();
         }
 
+        /** 该修订的隔离类加载器（仅注册中心做清单读取用；可为 null 表示已回收） */
+        public ClassLoader classLoaderOrNull() {
+            return this.classLoader;
+        }
+
+        boolean isRetired() {
+            return retired.get();
+        }
+
         boolean tryAcquire() {
             while (true) {
                 if (retired.get()) {
@@ -252,6 +261,11 @@ public final class VersionPinnedHotSwapManager {
             }
         }
         throw new IllegalStateException("模型 [" + modelCode + "] 正在切换版本，请重试获取会话租约");
+    }
+
+    /** 当前各模型最新修订快照（注册中心列举已挂载热模型用；返回值不可变） */
+    public List<MountedModelRevision> latestRevisions() {
+        return List.copyOf(latestByModelCode.values());
     }
 
     /**

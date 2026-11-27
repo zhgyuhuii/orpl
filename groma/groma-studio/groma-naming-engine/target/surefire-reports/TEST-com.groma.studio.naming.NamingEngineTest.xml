@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.groma.studio.naming.NamingEngineTest" time="0.097" tests="4" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="com.groma.studio.naming.NamingEngineTest" time="0.124" tests="4" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="21"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -13,7 +13,7 @@
     <property name="sun.java.launcher" value="SUN_STANDARD"/>
     <property name="user.country" value="CN"/>
     <property name="sun.boot.library.path" value="/opt/homebrew/Cellar/openjdk@21/21.0.12.1/libexec/openjdk.jdk/Contents/Home/lib"/>
-    <property name="sun.java.command" value="/Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/surefire/surefirebooter-20261127045055046_24.jar /Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/surefire 2026-11-27T04-50-52_767-jvmRun1 surefire-20261127045055046_22tmp surefire_6-20261127045055046_23tmp"/>
+    <property name="sun.java.command" value="/Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/surefire/surefirebooter-20261127105058701_24.jar /Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/surefire 2026-11-27T10-50-56_063-jvmRun1 surefire-20261127105058701_22tmp surefire_6-20261127105058701_23tmp"/>
     <property name="jdk.debug" value="release"/>
     <property name="surefire.test.class.path" value="/Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/test-classes:/Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/classes:/Users/zyh/.m2/repository/tools/jackson/core/jackson-databind/3.1.4/jackson-databind-3.1.4.jar:/Users/zyh/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.21/jackson-annotations-2.21.jar:/Users/zyh/.m2/repository/tools/jackson/core/jackson-core/3.1.4/jackson-core-3.1.4.jar:/Users/zyh/.m2/repository/com/belerweb/pinyin4j/2.5.1/pinyin4j-2.5.1.jar:/Users/zyh/.m2/repository/org/junit/jupiter/junit-jupiter/6.0.3/junit-jupiter-6.0.3.jar:/Users/zyh/.m2/repository/org/junit/jupiter/junit-jupiter-api/6.0.3/junit-jupiter-api-6.0.3.jar:/Users/zyh/.m2/repository/org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar:/Users/zyh/.m2/repository/org/junit/platform/junit-platform-commons/6.0.3/junit-platform-commons-6.0.3.jar:/Users/zyh/.m2/repository/org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar:/Users/zyh/.m2/repository/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar:/Users/zyh/.m2/repository/org/junit/jupiter/junit-jupiter-params/6.0.3/junit-jupiter-params-6.0.3.jar:/Users/zyh/.m2/repository/org/junit/jupiter/junit-jupiter-engine/6.0.3/junit-jupiter-engine-6.0.3.jar:/Users/zyh/.m2/repository/org/junit/platform/junit-platform-engine/6.0.3/junit-platform-engine-6.0.3.jar:"/>
     <property name="sun.cpu.endian" value="little"/>
@@ -29,7 +29,7 @@
     <property name="java.vm.specification.vendor" value="Oracle Corporation"/>
     <property name="java.specification.name" value="Java Platform API Specification"/>
     <property name="apple.awt.application.name" value="ForkedBooter"/>
-    <property name="surefire.real.class.path" value="/Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/surefire/surefirebooter-20261127045055046_24.jar"/>
+    <property name="surefire.real.class.path" value="/Users/zyh/work/orpl/groma/groma-studio/groma-naming-engine/target/surefire/surefirebooter-20261127105058701_24.jar"/>
     <property name="user.script" value="Hans"/>
     <property name="sun.management.compiler" value="HotSpot 64-Bit Tiered Compilers"/>
     <property name="java.runtime.version" value="21.0.12.1"/>
@@ -57,8 +57,8 @@
     <property name="sun.io.unicode.encoding" value="UnicodeBig"/>
     <property name="java.class.version" value="65.0"/>
   </properties>
-  <testcase name="llmBackfillDoesNotRenameLockedSymbols" classname="com.groma.studio.naming.NamingEngineTest" time="0.072"/>
-  <testcase name="lockedSymbolsNeverChange" classname="com.groma.studio.naming.NamingEngineTest" time="0.016"/>
-  <testcase name="deterministicAcrossRuns" classname="com.groma.studio.naming.NamingEngineTest" time="0.002"/>
+  <testcase name="llmBackfillDoesNotRenameLockedSymbols" classname="com.groma.studio.naming.NamingEngineTest" time="0.094"/>
+  <testcase name="lockedSymbolsNeverChange" classname="com.groma.studio.naming.NamingEngineTest" time="0.019"/>
+  <testcase name="deterministicAcrossRuns" classname="com.groma.studio.naming.NamingEngineTest" time="0.003"/>
   <testcase name="identifiersAreValidAndUnique" classname="com.groma.studio.naming.NamingEngineTest" time="0.002"/>
 </testsuite>

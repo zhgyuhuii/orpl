@@ -1,4 +1,4 @@
-# 严格遵守 CMD-NP-12 (CFG-01~05) 与 NP-R11/NP-R12：零盘符路径、零个人目录、零写死内网 IP、请求体显式上限！
+# 严格遵守 CMD-NP-12 (CFG-01~05) 与 NP-R03/NP-R04/NP-R09：零写死内网 IP、零明文口令、零盘符路径、请求体显式上限！
 server:
   port: ${GROMA_SERVER_PORT:8080}
   tomcat:

@@ -1,4 +1,5 @@
 com/groma/base/engine/BaseSimEntity.class
+com/groma/base/engine/runtime/GromaSessionManager$SessionLifecycleListener.class
 com/groma/base/engine/GromaValues.class
 com/groma/base/engine/archive/DeterministicRngStream.class
 com/groma/base/engine/GromaTriggerTable$Judge.class

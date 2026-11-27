@@ -4,6 +4,15 @@
 > 1. 需求与架构说明书：`docs/方圆语言2D_3D智能建模与多端推演平台_需求与技术架构设计说明书.docx`（版本 V12.0，基准《方圆语言标准-1117》）
 > 2. 仓库全量源码：`groma/`（含 `groma-base` 5 子模块、`groma-studio` 8 子模块、`groma-models` 双样本模块、`groma-bootstrap` 宿主、`docs/` 7 份专项规约、`tools/regression/` 门禁脚本）
 
+> **修订记录（2026-11-27）**：本报告经逐条源码核查后，第三部分优先级 P0/P1/P2 的 10 条建议已全部落地修复：
+> P0（DebugEndpoint→DapWebSocketRouter 真实桥接 + SimDebugCoordinator 冻结联动；GromaModelRegistry 统一注册中心
+> 消除三处各自为政 + 会话级租约持有；hotRuntimes 失效与 ModelToolRegistrar 回调接通）、P1（等待类接口与过程执行
+> 全部走单写者桥；querySubtreeJson 改 Jackson 合法 JSON；冷会话驱逐改 lastAccess + WS 端点依赖改
+> ServerEndpointConfig userProperties 注入）、P2（表达式沙盒支持布尔/算术/括号完整求值；词典模块化分片；
+> export-zip 一键源码工程导出含静态合包）。第二部分事实性描述同步修正：MCP 错误码以
+> `McpErrorCode` 实际 10 类为准（无 `EXECUTION_ERROR`，细分 `PRECONDITION_FAILED`/`MAINTAIN_BROKEN`/
+> `PROCESS_FAILED`/`MODEL_VERSION_MISMATCH`）；scan.py 红线为 NP-R01~R10 与 FE-R01~R13 全集。
+
 ---
 
 ## 第一部分：说明书现状诊断与“图-文-码”差异总览
@@ -23,7 +32,7 @@
 | :--- | :--- | :--- | :--- |
 | **`groma-base` 子模块数** | 仅列出 **4 个**子模块（common / websocket / engine / connector），将 MCP 放在 M7~M8 远期路线图 | 已完整实现 **5 个**子模块，新增 `groma-base-mcp`（含 18 个固定工具、7 类只读资源、动态工具注册与指标埋点） | **文档滞后于代码**：需在第一、二章正式补齐 `groma-base-mcp` 架构详设 |
 | **`groma-studio` 子模块数** | 仅列出 **6 个**子模块 | 实际包含 **8 个**部分（7 个 Java 模块 + `groma-studio-web`），多出 `groma-model-import` 与独立的 `groma-naming-engine` | **文档滞后于代码**：需补入语料拉取不可变仓库与独立命名引擎模块说明 |
-| **画布连线与事件数量** | 全文统称 **“28 类关系 + 15 类事件”** | `docs/shapes-and-fields-dict.md` 与解析器实际支持 **29 种连线形状**（含 `edge-link` R00）与 **21 种标准事件**（含反向被动事件 `as/xs/am/xm/ar/vr/xr` 及 `paa`） | **口径不一致**：需修正为 29 类连线与 21 类事件，补齐缺失的 6 类事件语义 |
+| **画布连线与事件数量** | 全文统称 **“28 类关系 + 15 类事件”** | `docs/shapes-and-fields-dict.md` 与解析器实际支持 **29 种连线形状**（含 `edge-link` R00）与 **21 种标准事件**（含反向被动事件 `as/xs/am/xm/ar/vr/xr` 及 `paa`） | **口径不一致**：需修正为 29 类连线与 21 类事件，补齐缺失的事件语义（`as`/`xs`/`am`/`xm`/`ar`/`vr`/`xr`/`paa`） |
 | **Web 容器与 WS 协议** | 第七章称采用 **Undertow** 容器；第二章称 WS 上行采用 **JSON-RPC 2.0**、下行支持 **MessagePack** | `groma-bootstrap` 实际使用内嵌 **Tomcat** + JSR-356 原生端点；WS 实际采用轻量文本前缀协议（下行 `TP:<JSON>`，上行 `HRT:/CTL:/SP:/T/I/TREE:`） | **图文不符**：应按已落地的 `ws-protocol.md` 修正协议描述，或明确 JSON-RPC/MsgPack 为 v2 演进规划 |
 | **两处 `groma-models` 双轨并存** | 称 `groma-bootstrap` 直接合包编译 `groma-models/model-*` | 根下 `groma-models/` 存放手写简化演示代码，而生成代码实际落在 `groma-bootstrap/groma-workspace/groma-models/`，且 `groma-bootstrap/pom.xml` 因类名冲突注释掉了模型静态依赖，改走运行时流水线热挂载 | **关键工程割裂**：会导致用户下载源码执行 `mvn package` 打出的 JAR 默认未静态合包生成模型，需统一治理 |
 | **两级热更新（L1/L2）与字节码插桩** | 宣称支持 **ASM 零时间循环熔断插桩** + L1 步进边界原子替换算子 | `groma-compiler-hotswap` 实际采用 ECJ 全模块增量重编 + `ModelModuleClassLoader`（Child-First）按会话版本钉住（Version-Pinned Lease），未引入 ASM 字节码插桩，零时间配额由引擎层计数器实现 | **实现机制偏移**：当前版本钉住方案比 ASM 改写更稳妥，建议更新文档使其与真实类加载器租约架构对齐 |
@@ -59,7 +68,7 @@
 
 #### B.1 传输协议与双层工具暴露模型
 - **端点与协议**：基于 Spring AI 2.0 MCP Server Starter 暴露 `POST /mcp`（MCP Streamable HTTP，协议版本 `2025-06-18`），请求超时 `90s`，上游网关要求关闭响应缓冲（`proxy_buffering off`）并基于 `Mcp-Session-Id` 配置一致性哈希会话亲和。
-- **统一响应信封**：所有工具统一返回 `McpToolEnvelope<T>`，标准错误码枚举涵盖 `MODEL_NOT_FOUND`、`SCENE_NOT_FOUND`、`SESSION_NOT_FOUND`、`INVALID_ARGUMENT`、`LIMIT_EXCEEDED`、`TIMEOUT`、`EXECUTION_ERROR`。
+- **统一响应信封**：所有工具统一返回 `McpToolEnvelope<T>`，标准错误码枚举（`McpErrorCode`，共 10 类）涵盖 `MODEL_NOT_FOUND`、`SCENE_NOT_FOUND`、`SESSION_NOT_FOUND`、`INVALID_ARGUMENT`、`PRECONDITION_FAILED`、`MAINTAIN_BROKEN`、`PROCESS_FAILED`、`TIMEOUT`、`LIMIT_EXCEEDED`、`MODEL_VERSION_MISMATCH`。
 
 #### B.2 18 个宿主固定工具（`GromaFixedMcpTools`）
 所有固定工具均标注 `@McpTool.McpAnnotations(readOnlyHint, destructiveHint, idempotentHint)`，分属三大职责域：
@@ -88,7 +97,7 @@
 #### C.2 29 种连线与 21 种事件的权威补全
 原说明书第五章仅列出 28 种连线与 15 种事件，需补齐以下要素：
 - **第 29 种连线**：`edge-link`（`R00` 通用基础连接线，由解析器按两端节点类型归一化或作拓扑辅助）。
-- **补齐 6 种反向与取消事件（凑齐 21 种标准事件）**：
+- **补齐反向、被动与中断事件（凑齐 21 种标准事件权威口径）**：
   - 指定状态生命周期：`as`（以指定状态出现）、`xs`（在指定状态下消亡）；
   - 集合被动视角：`am`（个体被加入集合）、`xm`（个体被移出集合）；
   - 引用被动视角：`ar`（被建立指向）、`vr`（被变更指向）、`xr`（被解除指向）；
@@ -146,7 +155,7 @@
 源码内置了极高水准的质量门禁（`.gitlab-ci.yml` + `tools/regression/scan.py`），强烈建议增补为说明书第九章：
 1. **五阶段流水线**：`legacy-zero-diff`（存量目录零修改校验） $\rightarrow$ `build` $\rightarrow$ `unit-test`（含 R1~R14 黄金确定性回归集） $\rightarrow$ `corpus-e2e`（真实语料六步全链路验证） $\rightarrow$ `rules-and-secrets-scan`。
 2. **前后端静态红线自动阻断（`scan.py`）**：
-   - 后端红线（`NP-R01` ~ `NP-R12`）：严禁 `System.out` / `printStackTrace`、严禁推演热路径使用 `synchronized` 钉死虚拟线程、严禁使用无种子 `Math.random()` / `new Random()`、严禁配置文件硬编码盘符路径/内网 IP/明文密码。
+   - 后端红线（`NP-R01` ~ `NP-R10`，23 条前后端红线全部固化在 `scan.py`）：严禁 `System.out` / `printStackTrace`、严禁推演热路径使用 `synchronized` 钉死虚拟线程、严禁使用无种子 `Math.random()` / `new Random()`、严禁配置文件硬编码私网 IP/明文口令与源码盘符路径、严禁 engine 目录阻塞休眠与裸建平台线程。
    - 前端红线（`FE-R01` ~ `FE-R13`）：水位线保存追踪（`watermarkSaveTracker.ts` 防旧响应覆盖新编辑）、X6 连线前端守卫（`x6ConnectionGuard.ts`）、XSS 安全渲染（`safeHtml.ts`）。
 
 ---

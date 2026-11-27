@@ -14,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -48,8 +49,16 @@ public class GromaSessionManager implements AutoCloseable {
     public record SessionSummary(
             String sessionId, String modelCode, String modelVersion, String sceneCode, String sceneZhName,
             String status, long tickIndex, long worldTimeMs, double speed, int instanceCount, int activeProcessCount,
-            boolean paused
+            boolean paused, long lastAccessEpochMs
     ) {}
+
+    /**
+     * 会话停止监听器：宿主侧（模型注册中心）用它释放会话持有的模型版本租约。
+     * 回调在调用 stopSession 的线程上触发（事件循环停止路径亦然），实现方必须快速返回。
+     */
+    public interface SessionLifecycleListener {
+        void onSessionStopped(String sessionId);
+    }
 
     private final TickEventLoopGroup loopGroup;
     private final int maxConcurrentSessions;
@@ -59,6 +68,14 @@ public class GromaSessionManager implements AutoCloseable {
     private volatile long maxStepsPerSession = 1_000_000L;
     private volatile Duration idleTimeout = Duration.ofMinutes(30);
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final CopyOnWriteArrayList<SessionLifecycleListener> lifecycleListeners = new CopyOnWriteArrayList<>();
+
+    /** 注册会话停止监听器（宿主释放会话级资源，如热挂载模型租约） */
+    public void addLifecycleListener(SessionLifecycleListener listener) {
+        if (listener != null) {
+            lifecycleListeners.add(listener);
+        }
+    }
 
     public GromaSessionManager(TickEventLoopGroup loopGroup, int maxConcurrentSessions) {
         this.loopGroup = loopGroup;
@@ -227,6 +244,13 @@ public class GromaSessionManager implements AutoCloseable {
         } else {
             handle.session().requestTerminate();
         }
+        for (SessionLifecycleListener listener : lifecycleListeners) {
+            try {
+                listener.onSessionStopped(sessionId);
+            } catch (RuntimeException ex) {
+                log.warn("[SessionManager] 会话 {} 停止监听器异常: {}", sessionId, ex.getMessage());
+            }
+        }
         log.info("[SessionManager] 会话 {} 已停止", sessionId);
     }
 
@@ -283,14 +307,16 @@ public class GromaSessionManager implements AutoCloseable {
         return "OK";
     }
 
-    private static SessionSummary toSummary(SessionHandle handle) {
+    private SessionSummary toSummary(SessionHandle handle) {
         GromaWorldContext session = handle.session();
         WorldSnapshot snap = session.getLatestSnapshot();
+        AtomicLong access = lastAccess.get(handle.sessionId());
         return new SessionSummary(
                 handle.sessionId(), handle.runtime().modelCode(), handle.runtime().modelVersion(), handle.sceneCode(),
                 handle.sceneZhName(), session.getLifecycleStatus(), session.getTickIndex(),
                 snap == null ? 0L : snap.worldTimeMs(), session.effectiveSpeedPublic(),
-                session.instanceCount(), session.activeProcessCount(), session.isPaused());
+                session.instanceCount(), session.activeProcessCount(), session.isPaused(),
+                access == null ? handle.createdEpochMs() : access.get());
     }
 
     @Override
@@ -300,6 +326,10 @@ public class GromaSessionManager implements AutoCloseable {
         }
         for (String sessionId : List.copyOf(sessions.keySet())) {
             stopSession(sessionId);
+        }
+        // 实时模式下事件循环组由会话管理器一并关闭（宿主 Bean destroyMethod=close 的完整生命周期）
+        if (loopGroup != null) {
+            loopGroup.close();
         }
     }
 }

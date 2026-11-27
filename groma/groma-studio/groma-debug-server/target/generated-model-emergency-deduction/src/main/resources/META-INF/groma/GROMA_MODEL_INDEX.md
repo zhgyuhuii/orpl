@@ -377,7 +377,7 @@
 | 枚举 | 状态（画布顺序） | 初始状态 |
 |---|---|---|
 | 任务状态（`TaskStateEnum`） | 待下达 `PENDING_ISSUE` / 执行中 `EXECUTING` / 已完成 `COMPLETED` | 待下达 |
-| 列车状态（`TrainStateEnum`） | 停站 `STOPPED_AT_STATION` / 行驶 `RUNNING` / 迫停 `FORCED_STOP` / 待进入 `PENDING_ENTRY` | 待进入 |
+| 列车状态（`TrainStateEnum`） | 停站 `STOPPED_AT_STATION` / 行驶 `RUN` / 迫停 `FORCED_STOP` / 待进入 `PENDING_ENTRY` | 待进入 |
 | 积水状态（`WaterloggingStateEnum`） | 无积水 `NO_WATERLOGGING` / 积水 `WATERLOGGING` | 无积水 |
 | 疏散状态（`EvacuationStateEnum`） | 待疏散 `PENDING_EVACUATION` / 疏散中 `EVACUATING` / 已完成 `COMPLETED` | 待疏散 |
 | 通行状态（`PassingStateEnum`） | 待进入 `PENDING_ENTRY` / 通行中 `PASSING` / 已完成 `COMPLETED` / 已取消 `CANCELLED` | 待进入 |
