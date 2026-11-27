@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.groma</groupId>
+        <artifactId>groma-base</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>groma-base-mcp</artifactId>
+    <name>Groma Base :: Streamable HTTP MCP Server Infrastructure</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.groma</groupId>
+            <artifactId>groma-base-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.groma</groupId>
+            <artifactId>groma-base-engine</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Spring AI MCP 服务端起步依赖（WebMVC + Streamable HTTP，落实 03-mcp-analysis.md 方案 A） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Micrometer 指标采集（落实 NP-MCP-009） -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

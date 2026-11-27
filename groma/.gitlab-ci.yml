@@ -1,0 +1,53 @@
+# 文件: .gitlab-ci.yml
+# 五阶段强制门禁流水线（落实 NP-QA-003），第一阶段即为 CMD-NP-00 存量零修改门禁，任一阶段失败立即阻断合并！
+stages:
+  - legacy-zero-diff
+  - build
+  - unit-test
+  - corpus-e2e
+  - rules-and-secrets-scan
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+
+# 阶段 1：存量六个目录零修改门禁（CMD-NP-00，失败立即终止整条流水线）
+gate_legacy_zero_diff:
+  stage: legacy-zero-diff
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git bash && rm -rf /var/lib/apt/lists/*
+  script:
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-00
+
+# 阶段 2：全模块干净编译构建
+build_workspace:
+  stage: build
+  image: maven:3.9.9-eclipse-temurin-21
+  script:
+    - mvn -B -f groma/pom.xml clean test-compile
+
+# 阶段 3：全量单元测试与标准 R1~R14 黄金回归集（CMD-NP-01 & CMD-NP-05）
+unit_and_golden_tests:
+  stage: unit-test
+  image: maven:3.9.9-eclipse-temurin-21
+  script:
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-01
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-05
+
+# 阶段 4：真实语料与合成全形状语料六步端到端门禁（CMD-NP-10）
+corpus_end_to_end:
+  stage: corpus-e2e
+  image: maven:3.9.9-eclipse-temurin-21
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+  script:
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-10
+
+# 阶段 5：新平台源码红线规则、配置外置与明文凭据扫描（CMD-NP-03 / CMD-NP-04 / CMD-NP-12）
+static_rules_and_secrets:
+  stage: rules-and-secrets-scan
+  image: python:3.11-slim
+  script:
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-03
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-12
+    - bash reliability-spec/scripts/run-check.sh CMD-NP-04

@@ -1,0 +1,16 @@
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/AstSourceMap.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/GeneratedModuleBundle.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/GromaModuleSourceGeneratorFacade.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/ProcessCodeAstTranslator.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/LeafBodyEmitter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/LegacyPlanAdapter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ManifestAndIndexEmitter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ModelLayerEmitter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ModuleRuntimeEmitter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/OperandRenderer.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/PlanModel.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ProcessEventNames.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ProcessTaskEmitter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ServiceLayerEmitter.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/ToolSemantics.java
+/Users/zyh/work/orpl/groma/groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/WorldContextEmitter.java

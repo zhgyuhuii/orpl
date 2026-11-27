@@ -1,0 +1,109 @@
+package com.groma.base.connector;
+
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
+
+/**
+ * 外部脚本（Python / Node / R）安全沙盒调用器（落实 BE-EXT-004：路径穿越拦截 + 网络源码默认关闭 + 超时强杀 + 临时文件清理）
+ */
+public final class ExternalProgramConnector {
+
+    private final Map<String, Path> configuredExecutables;
+    private final Path allowlistedScriptDir;
+    private final boolean networkSourceEnabled;
+    private final Set<String> allowlistedNetworkHosts;
+    private final Duration executionTimeout;
+
+    public ExternalProgramConnector(
+            Map<String, Path> configuredExecutables,
+            Path allowlistedScriptDir,
+            boolean networkSourceEnabled,
+            Set<String> allowlistedNetworkHosts,
+            Duration executionTimeout) {
+        this.configuredExecutables = Map.copyOf(configuredExecutables);
+        this.allowlistedScriptDir = allowlistedScriptDir.toAbsolutePath().normalize();
+        this.networkSourceEnabled = networkSourceEnabled;
+        this.allowlistedNetworkHosts = Set.copyOf(allowlistedNetworkHosts);
+        this.executionTimeout = executionTimeout == null ? Duration.ofSeconds(30) : executionTimeout;
+    }
+
+    public String executeScript(String runtimeKey, String relativeScriptPath, List<String> args) throws IOException, InterruptedException {
+        Path executable = configuredExecutables.get(runtimeKey);
+        if (executable == null) {
+            throw new SecurityException("[EXT-PROG-001] 未配置的外部运行时: " + runtimeKey);
+        }
+        if (relativeScriptPath == null || relativeScriptPath.isBlank()) {
+            throw new IllegalArgumentException("脚本路径不能为空");
+        }
+        Path rawPath = Path.of(relativeScriptPath);
+        if (rawPath.isAbsolute()) {
+            throw new SecurityException("[EXT-PROG-002] 禁止传入绝对脚本路径: " + relativeScriptPath);
+        }
+        Path resolvedScript = allowlistedScriptDir.resolve(rawPath).normalize();
+        if (!resolvedScript.startsWith(allowlistedScriptDir)) {
+            throw new SecurityException("[EXT-PROG-002] 检测到脚本路径越界穿越: " + relativeScriptPath);
+        }
+        if (!Files.isRegularFile(resolvedScript)) {
+            throw new IllegalArgumentException("白名单目录内未找到脚本文件: " + relativeScriptPath);
+        }
+
+        Path isolatedWorkDir = Files.createTempDirectory("groma-ext-work-");
+        try {
+            List<String> cmd = new ArrayList<>();
+            cmd.add(executable.toString());
+            cmd.add(resolvedScript.toString());
+            if (args != null) {
+                cmd.addAll(args);
+            }
+            Process proc = new ProcessBuilder(cmd)
+                    .directory(isolatedWorkDir.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            boolean finished = proc.waitFor(executionTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            if (!finished) {
+                proc.destroyForcibly();
+                proc.waitFor(2, TimeUnit.SECONDS);
+                throw new IllegalStateException("[EXT-PROG-003] 外部脚本执行超时 (" + executionTimeout.toSeconds() + "s)，已强制终止子进程");
+            }
+            byte[] out = proc.getInputStream().readAllBytes();
+            return new String(out, StandardCharsets.UTF_8);
+        } finally {
+            deleteDirQuietly(isolatedWorkDir);
+        }
+    }
+
+    public URI validateNetworkSourceUri(String rawUri) {
+        if (!networkSourceEnabled) {
+            throw new SecurityException("[EXT-PROG-004] 从网络地址读取源码执行的能力默认关闭");
+        }
+        URI uri = URI.create(rawUri);
+        String host = uri.getHost();
+        if (host == null || !allowlistedNetworkHosts.contains(host.toLowerCase())) {
+            throw new SecurityException("[EXT-PROG-004] 网络源码主机不在白名单中: " + host);
+        }
+        return uri;
+    }
+
+    private static void deleteDirQuietly(Path dir) {
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException ignored) {
+        }
+    }
+}

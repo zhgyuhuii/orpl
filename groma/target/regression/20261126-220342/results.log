@@ -1,0 +1,4 @@
+PASS CORPUS-E2E 六步流水线(导入->解析->五层出码->ECJ编译->沙盒挂载->推进300步) 真跑通过 ok
+PASS CORPUS-ARTIFACT 解析告警报告已落盘 /Users/zyh/work/orpl/groma/groma-studio/groma-compiler-hotswap/target/real-corpus-warnings.txt
+PASS CORPUS-ARTIFACT 推演结果报告已落盘 /Users/zyh/work/orpl/groma/groma-studio/groma-compiler-hotswap/target/real-corpus-result.txt
+SUMMARY passed=3 failed=0

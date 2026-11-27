@@ -1,0 +1,16 @@
+[
+  { "caseId": "R1",  "name": "基础算子与耗时过程步进修正基准", "seed": 202601, "targetTicks": 200,  "reloadAtTick": 100 },
+  { "caseId": "R2",  "name": "孪生过程运行期强制锁1x倍速与恢复", "seed": 202602, "targetTicks": 150,  "reloadAtTick": 60 },
+  { "caseId": "R3",  "name": "消耗/生成/状态转换分组概率CDF守恒", "seed": 202603, "targetTicks": 500,  "reloadAtTick": 250 },
+  { "caseId": "R4",  "name": "主导维持条件(agent)失能级联中断子树", "seed": 202604, "targetTicks": 180,  "reloadAtTick": 90 },
+  { "caseId": "R5",  "name": "四层嵌套子过程与lastEnd旁路取消回收", "seed": 202605, "targetTicks": 240,  "reloadAtTick": 120 },
+  { "caseId": "R6",  "name": "集合成员代理(ma/mx)异步队列防栈重入", "seed": 202606, "targetTicks": 300,  "reloadAtTick": 150 },
+  { "caseId": "R7",  "name": "单向与双向关联基数约束及ra/rv/rx事件", "seed": 202607, "targetTicks": 200,  "reloadAtTick": 100 },
+  { "caseId": "R8",  "name": "多继承接口契约与组合委托桥接方法", "seed": 202608, "targetTicks": 120,  "reloadAtTick": 60 },
+  { "caseId": "R9",  "name": "超时(pcd)与欠时提前完成(pca)异常触发", "seed": 202609, "targetTicks": 220,  "reloadAtTick": 110 },
+  { "caseId": "R10", "name": "启动失败(psf)分支跳转与单例过程锁释放", "seed": 202610, "targetTicks": 160,  "reloadAtTick": 80 },
+  { "caseId": "R11", "name": "一次性暂停条件自动失效与持续终止条件", "seed": 202611, "targetTicks": 100,  "reloadAtTick": 50 },
+  { "caseId": "R12", "name": "步进边界300步热存档与1000步无损续跑", "seed": 202612, "targetTicks": 1000, "reloadAtTick": 300 },
+  { "caseId": "R13", "name": "应急决策推演：三站两区间积水与列车运行", "seed": 202613, "targetTicks": 600,  "reloadAtTick": 300 },
+  { "caseId": "R14", "name": "智能筹划应用：多智能体串联与航线规划", "seed": 202614, "targetTicks": 300,  "reloadAtTick": 150 }
+]

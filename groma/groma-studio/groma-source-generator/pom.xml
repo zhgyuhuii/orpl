@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.groma</groupId>
+        <artifactId>groma-studio</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>groma-source-generator</artifactId>
+    <name>Groma Five-Layer Source &amp; MCP Generator</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.groma</groupId>
+            <artifactId>groma-base-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.groma</groupId>
+            <artifactId>groma-base-engine</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.groma</groupId>
+            <artifactId>groma-model-parser</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.groma</groupId>
+            <artifactId>groma-naming-engine</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Palantir JavaPoet：原生支持 JDK 21 record / sealed / 确定性导包排版 -->
+        <dependency>
+            <groupId>com.palantir.javapoet</groupId>
+            <artifactId>javapoet</artifactId>
+        </dependency>
+        <!-- JavaParser：用于过程中文代码改写、@GromaUserCode 保护区合并与双向行列号提取 -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+        </dependency>
+        <!-- Jackson 3：生成确定性排序的 META-INF/groma/mcp/manifest.json -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.swagger.core.v3</groupId>
+            <artifactId>swagger-annotations-jakarta</artifactId>
+            <version>2.2.25</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

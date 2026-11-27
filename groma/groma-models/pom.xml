@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.groma</groupId>
+        <artifactId>groma</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <artifactId>groma-models</artifactId>
+    <packaging>pom</packaging>
+    <name>Groma Compiled Business Models</name>
+
+    <profiles>
+        <!-- 默认模式一：多模型合包构建 -->
+        <profile>
+            <id>multi-models-default</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <modules>
+                <module>model-emergency-deduction</module>
+                <module>model-smart-planning</module>
+            </modules>
+        </profile>
+
+        <!-- 模式二：单模型精简独立交付 (-Psingle-model -Dtarget.model=model-emergency-deduction) -->
+        <profile>
+            <id>single-model</id>
+            <properties>
+                <target.model>model-emergency-deduction</target.model>
+            </properties>
+            <modules>
+                <module>${target.model}</module>
+            </modules>
+        </profile>
+    </profiles>
+</project>

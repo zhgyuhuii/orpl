@@ -1,0 +1,2 @@
+FAIL CORPUS-E2E 语料端到端测试失败（见上方 surefire 输出） error
+SUMMARY passed=0 failed=1

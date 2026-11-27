@@ -1,0 +1,11 @@
+{
+  "caseId": "GOLDEN-R09-RELOAD",
+  "ruleId": "R9",
+  "description": "存档续跑一致性：第 300 步存档重载后，对象事件触发耗时过程正常启动且第 301~1000 步快照摘要与原始运行完全一致（验证规避 BE-03）",
+  "modelCode": "rm-b2-full-shapes",
+  "sceneCode": "full_feature_scene",
+  "seed": 20261124,
+  "totalSteps": 1000,
+  "checkpointStep": 300,
+  "expectedStatus": "RUNNING"
+}

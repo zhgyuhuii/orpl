@@ -1,0 +1,38 @@
+{
+  "name": "groma-studio-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
+    "build": "vue-tsc -b && vite build",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@antv/x6": "2.18.1",
+    "@codemirror/state": "6.4.1",
+    "@codemirror/view": "6.34.1",
+    "dompurify": "3.1.7",
+    "element-plus": "2.8.4",
+    "pinia": "2.2.4",
+    "pixi.js": "8.5.2",
+    "three": "0.170.0",
+    "vue": "3.5.12",
+    "vue-router": "4.4.5"
+  },
+  "devDependencies": {
+    "@types/dompurify": "3.0.5",
+    "@types/node": "20.17.6",
+    "@types/three": "0.170.0",
+    "@vitejs/plugin-vue": "5.1.4",
+    "@vitest/coverage-v8": "2.1.4",
+    "@vue/test-utils": "2.4.6",
+    "happy-dom": "15.7.4",
+    "jsdom": "25.0.1",
+    "typescript": "5.6.3",
+    "vite": "5.4.10",
+    "vitest": "2.1.4",
+    "vue-tsc": "2.1.8"
+  }
+}

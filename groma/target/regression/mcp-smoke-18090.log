@@ -1,0 +1,41 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.0)
+
+2026-11-26T22:05:29.631+08:00  INFO 29721 --- [groma-simulation-service] [           main] c.g.b.GromaSimulationApplication         : Starting GromaSimulationApplication using Java 21.0.12.1 with PID 29721 (/Users/zyh/work/orpl/groma/groma-bootstrap/target/groma-bootstrap-1.0.0.jar started by zyh in /Users/zyh/work/orpl/groma)
+2026-11-26T22:05:29.633+08:00  INFO 29721 --- [groma-simulation-service] [           main] c.g.b.GromaSimulationApplication         : No active profile set, falling back to 1 default profile: "default"
+2026-11-26T22:05:30.017+08:00  WARN 29721 --- [groma-simulation-service] [           main] trationDelegate$BeanPostProcessorChecker : Bean 'org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerAnnotationScannerAutoConfiguration' of type [org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerAnnotationScannerAutoConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected/applied to a currently created BeanPostProcessor [serverAnnotatedMethodBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies/advisors. If this bean does not have to be post-processed, declare it with ROLE_INFRASTRUCTURE.
+2026-11-26T22:05:30.018+08:00  WARN 29721 --- [groma-simulation-service] [           main] trationDelegate$BeanPostProcessorChecker : Bean 'serverAnnotatedBeanRegistry' of type [org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerAnnotationScannerAutoConfiguration$ServerMcpAnnotatedBeans] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected/applied to a currently created BeanPostProcessor [serverAnnotatedMethodBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies/advisors. If this bean does not have to be post-processed, declare it with ROLE_INFRASTRUCTURE.
+2026-11-26T22:05:30.022+08:00  WARN 29721 --- [groma-simulation-service] [           main] trationDelegate$BeanPostProcessorChecker : Bean 'spring.ai.mcp.server.annotation-scanner-org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerAnnotationScannerProperties' of type [org.springframework.ai.mcp.server.common.autoconfigure.annotations.McpServerAnnotationScannerProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected/applied to a currently created BeanPostProcessor [serverAnnotatedMethodBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies/advisors. If this bean does not have to be post-processed, declare it with ROLE_INFRASTRUCTURE.
+2026-11-26T22:05:30.095+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18090 (http)
+2026-11-26T22:05:30.100+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-11-26T22:05:30.100+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.22]
+2026-11-26T22:05:30.110+08:00  INFO 29721 --- [groma-simulation-service] [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 458 ms
+2026-11-26T22:05:30.299+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.v.b.OptionalValidatorFactoryBean     : Failed to set up a Bean Validation provider: jakarta.validation.NoProviderFoundException: Unable to create a Configuration, because no Jakarta Validation provider could be found. Add a provider like Hibernate Validator (RI) to your classpath.
+2026-11-26T22:05:30.412+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Enable tools capabilities, notification: true
+2026-11-26T22:05:30.475+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Registered tools: 18
+2026-11-26T22:05:30.475+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Enable resources capabilities, notification: true
+2026-11-26T22:05:30.476+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Enable resources templates capabilities, notification: true
+2026-11-26T22:05:30.478+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Registered resource templates: 7
+2026-11-26T22:05:30.478+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Enable prompts capabilities, notification: true
+2026-11-26T22:05:30.479+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.a.m.s.c.a.McpServerAutoConfiguration : Enable completions capabilities
+2026-11-26T22:05:30.569+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 3 endpoints beneath base path '/actuator'
+2026-11-26T22:05:30.597+08:00  INFO 29721 --- [groma-simulation-service] [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18090 (http) with context path '/'
+2026-11-26T22:05:30.601+08:00  INFO 29721 --- [groma-simulation-service] [           main] c.g.b.p.GromaWebSocketConfiguration      : [WS] 端点已注册：/ws/groma/{{modelCode}}/{{sceneCode}}/{{sessionId}} 与 /ws/debug/{{sessionId}}
+2026-11-26T22:05:30.605+08:00  INFO 29721 --- [groma-simulation-service] [           main] c.g.b.GromaSimulationApplication         : Started GromaSimulationApplication in 1.108 seconds (process running for 1.284)
+2026-11-26T22:05:30.636+08:00  INFO 29721 --- [groma-simulation-service] [           main] c.g.b.hygiene.CompileEnvStartupChecker   : [StartupCheck] 运行时 JDK=21，系统 javac 可用且版本匹配，内嵌 ECJ 已就绪
+2026-11-26T22:05:31.398+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-11-26T22:05:31.399+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-11-26T22:05:31.399+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 0 ms
+2026-11-26T22:05:31.539+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-2] c.g.s.parser.AbModelMergerAndParser      : [Parser] 模型 应急决策推演-关联副本-1029 v647：实体 2632，视图 415，过程定义 61，事件接线 16，默认启动 3，手动启动 28，诊断 5
+2026-11-26T22:05:32.396+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-2] c.g.studio.sync.WorkspaceSyncService     : [WorkspaceSync] 模块 model-emergency-deduction 同步完成：写入 0 个文件，跳过未变更 246 个，保留手写块 0 处，越界覆盖告警 0 处
+2026-11-26T22:05:32.908+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-2] c.g.s.c.VersionPinnedHotSwapManager      : [HotSwap] 模型 emergency-deduction 已切换至版本 647（recompiled=true, cacheHit=false, cost=505ms）
+2026-11-26T22:05:34.019+08:00  INFO 29721 --- [groma-simulation-service] [io-18090-exec-2] c.g.b.pipeline.ModelPipelineService      : [Pipeline] 模型 emergency-deduction v647 构建完成：源文件 246，告警 5，重编 true，javac 对拍 false
+2026-11-26T22:05:34.065+08:00  INFO 29721 --- [groma-simulation-service] [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-11-26T22:05:34.078+08:00  INFO 29721 --- [groma-simulation-service] [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

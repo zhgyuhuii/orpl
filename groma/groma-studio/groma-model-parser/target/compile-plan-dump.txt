@@ -1,0 +1,304 @@
+types=33, processDefs=61, instances=28, triggers=16, defaultStarts=3, warnings=5
+  [TYPE] 判断文件是否存在 (瞬时) params=[O:是否存在<boolean>] nodes=1
+      pc0 CALL 判断文件是否存在 in=[路径/标识=self.abc7c313392342d8bb2f1a44ef593248<String>] out=[是否成功=local(是否成功), 是否存在=param(是否存在)]
+  [TYPE] 入口过水 (瞬时) params=[O:向站内流入<boolean>, I:区域水面高程<double>, I:本步秒数<long>, O:当前过水流量<double>, I:站内水面高程<double>, O:本步过水量<double>, I:区域积水量<double>] nodes=6
+      pc0 compare.eq in=[a=self.KsKWUZghMV0qp4PvIP9<EN:nrgTvUq55JNeiMMlawc>, b=local(挡水墙完好)] out=[] -> pc1? -> pc2?
+      pc1 assignment.assign in=[a=self.HsJlhF4Qq0meQjVXQl5<double>] out=[b=local(过水控制高程)] -> pc3
+      pc2 assignment.assign in=[a=self.lcRigegnMIZiDTVJben<double>] out=[b=local(过水控制高程)] -> pc4
+      pc3 assignment.assign in=[a=self.4y48YnVOoSCjQWsqZcs<double>] out=[b=local(过水宽度)] -> pc5
+      pc4 assignment.assign in=[a=self.TmBu06RLACpGgpetjrU<double>] out=[b=local(过水宽度)] -> pc5
+      pc5 CALL 确定连接处过水情况 in=[第一侧积水量=param(区域积水量), 第二侧水面高程=param(站内水面高程), 第一侧水面高程=param(区域水面高程), 第二侧积水量=self.ZSCBmOks5hfDvQgGwnd<double>, 本步秒数=param(本步秒数), 过水控制高程=local(过水控制高程), 过水宽度=local(过水宽度), 流量系数=self.CbhmI1QG31xuE1fsd8M<double>] out=[本步过水量=param(本步过水量), 第一侧流向第二侧=param(向站内流入), 当前过水流量=param(当前过水流量)]
+  [TYPE] 积水变化 (瞬时) params=[I:水量变化值<double>] nodes=7
+      pc0 arithmetic.add in=[a=param(水量变化值), b=self.I5aMxoukyy1DY1moXdW<double>] out=[c=local(可用水量)] -> pc1
+      pc1 arithmetic.max in=[a=local(可用水量), b=const(定值f1e5a899074a45b5be13d44c17334c05)] out=[c=self.I5aMxoukyy1DY1moXdW<double>] -> pc2
+      pc2 compare.gt in=[a=self.I5aMxoukyy1DY1moXdW<double>, b=const(定值f1e5a899074a45b5be13d44c17334c05)] out=[] -> pc3? -> pc4?
+      pc3 CALL 转换为无积水状态 in=[] out=[] post=OUT_CHANGE(无积水) -> pc5
+      pc4 CALL 转换为积水状态 in=[] out=[] post=OUT_CHANGE(积水) -> pc6
+      pc5 assignment.assign in=[a=const(定值77575daf12b94b3397b54ebb7dad9a42)] out=[b=self.dcrXMnbxACceh8RH8aG<double>]
+      pc6 arithmetic.divide in=[a=self.I5aMxoukyy1DY1moXdW<double>, b=self.98fvn5ZHm7y1PFWygyd<double>] out=[c=self.dcrXMnbxACceh8RH8aG<double>]
+  [TYPE] 地表排水 (耗时) params=[] nodes=8
+      pc0 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(当前步进秒)] -> pc1
+      pc1 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(下一步进秒)] -> pc2
+      pc2 arithmetic.minus in=[a=local(下一步进秒), b=local(当前步进秒)] out=[c=local(本步秒数)] -> pc3
+      pc3 arithmetic.divide in=[a=self.ISBiulbqRYu9DTLTdBX<double>, b=const(定值954f91c96a574f7188d064b15b9a1f6e)] out=[] -> pc4
+      pc4 arithmetic.multiply in=[a=out(a5tAwdh5HGGywzmCfHY.c), b=local(本步秒数)] out=[] -> pc5
+      pc5 arithmetic.min in=[a=out(3sO2NYPe6swnvhiiSSp.c), b=self.I5aMxoukyy1DY1moXdW<double>] out=[] -> pc6
+      pc6 arithmetic.reverse in=[a=out(bfLjkTnkbQusbWzwBas.c)] out=[] -> pc7
+      pc7 CALL 积水变化 in=[水量变化值=out(MoV57ThnQ07k0YhErHl.b)] out=[] -> pc0
+  [TYPE] 沿区间前进 (瞬时) params=[I:地铁区间<E:6iap5H5evnoP56yto1c>, I:目标车站<E:rFXJKdFfEChoRdeX7aT>, I:行驶间隔<double>, I:已行驶距离<double>, I:是否沿里程增大方向<boolean>, I:当前线路里程<double>] nodes=15
+      pc0 arithmetic.multiply in=[a=param(行驶间隔), b=self.NAfVPmumtjToqjUB8dS<double>] out=[] -> pc1
+      pc1 arithmetic.divide in=[a=out(WhdSZuoQAVlvgpOZZtg.c), b=const(定值d9204193ac4c4b27a73967c3ced84686)] out=[c=local(本步计划行驶距离)] -> pc2
+      pc2 arithmetic.minus in=[a=param(地铁区间).T3HPIYB5pFkj92hQYOb<double>, b=param(已行驶距离)] out=[] -> pc3
+      pc3 arithmetic.min in=[a=local(本步计划行驶距离), b=out(zVEcAHXkwemT1do8Aoi.c)] out=[c=local(本步实际行驶距离)] -> pc4
+      pc4 compare.eq in=[a=param(是否沿里程增大方向), b=local(沿里程增大方向)] out=[] -> pc5? -> pc6?
+      pc5 automatic.incByVal [slow] in=[a=param(当前线路里程), b=local(本步实际行驶距离)] out=[a=param(当前线路里程)] -> pc7
+      pc6 automatic.decByVal [slow] in=[a=param(当前线路里程), b=local(本步实际行驶距离)] out=[a=param(当前线路里程)] -> pc7
+      pc7 automatic.incByVal [slow] in=[a=param(已行驶距离), b=local(本步实际行驶距离)] out=[a=param(已行驶距离)] -> pc8
+      pc8 arithmetic.divide in=[a=param(已行驶距离), b=param(地铁区间).T3HPIYB5pFkj92hQYOb<double>] out=[c=local(行驶进度)] -> pc9
+      pc9 arithmetic.minus in=[a=param(目标车站).bsd5Noel9k5tlgpoOWP.c66c8d5f512d410c8667aea645329f8a<double>, b=self.6q4BLT4xe5rzYrXrlde.c66c8d5f512d410c8667aea645329f8a<double>] out=[] -> pc10
+      pc10 arithmetic.multiply in=[a=out(crLnHuhmPi2wZgpNkwx.c), b=local(行驶进度)] out=[] -> pc11
+      pc11 arithmetic.add in=[a=out(dKrNSRgLK2jyA32uZqJ.c), b=self.6q4BLT4xe5rzYrXrlde.c66c8d5f512d410c8667aea645329f8a<double>] out=[c=self.f2Z0TqRbENyGCigHGVL.c66c8d5f512d410c8667aea645329f8a<double>] -> pc12
+      pc12 arithmetic.minus in=[a=param(目标车站).bsd5Noel9k5tlgpoOWP.c345363c20924664b8e94fe5188df806<double>, b=self.6q4BLT4xe5rzYrXrlde.c345363c20924664b8e94fe5188df806<double>] out=[] -> pc13
+      pc13 arithmetic.multiply in=[a=out(fOnxvqU6ycML8mtfmch.c), b=local(行驶进度)] out=[] -> pc14
+      pc14 arithmetic.add in=[a=out(5te74Cj7uQLwXYagKrm.c), b=self.6q4BLT4xe5rzYrXrlde.c345363c20924664b8e94fe5188df806<double>] out=[c=self.f2Z0TqRbENyGCigHGVL.c345363c20924664b8e94fe5188df806<double>]
+  [TYPE] 判断是否为空文件 (瞬时) params=[O:是否为空<boolean>] nodes=1
+      pc0 CALL 判断文件是否为空 in=[路径/标识=self.abc7c313392342d8bb2f1a44ef593248<String>] out=[是否成功=local(是否成功), 是否为空=param(是否为空)]
+  [SCENE] 2把否变成是 (瞬时) params=[O:文本1<boolean>] nodes=1
+      pc0 assignment.assign in=[a=const(定值ddd6421476834d8abeb4450fdf3e02e5)] out=[b=param(文本1)]
+  [TYPE] 水流交换间隔 (耗时) params=[O:本步时长<long>] nodes=3
+      pc0 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(本次步进秒)] -> pc1
+      pc1 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(下一步进秒)] -> pc2
+      pc2 arithmetic.minus in=[a=local(下一步进秒), b=local(本次步进秒)] out=[c=param(本步时长)]
+  [TYPE] 获取雨量序列 (瞬时) params=[I:雨量序列新<MAP:long:double>, I:原雨量序列<MAP:long:double>] nodes=3
+      pc0 CALL 过程1 in=[文本1=param(雨量序列新)] out=[] -> pc1
+      pc1 innerCollectionMap.keyValueToText in=[] out=[] -> pc2
+      pc2 innerCollectionMap.textToKeyValue in=[文本=out(LInfR3BLsP5Z3GvJ1Ki.文本)] out=[]
+  [TYPE] 车站与区间水流交换 (耗时) params=[I:水流系数<double>, I:连接处底高程<double>, O:本步过水量<double>, I:端点车站<E:rFXJKdFfEChoRdeX7aT>, O:当前过水流量<double>, I:有效过水宽度<double>] nodes=5
+      pc0 CALL 水流交换间隔 in=[] out=[本步秒数=local(本步秒数)] -> pc1
+      pc1 CALL 确定两端水位 in=[第二侧水深=self.SGp0FdRmQRJCz9bv1VR<double>, 第一侧底高程=param(端点车站).JbCoZ3N3pGfxVn1fAHA<double>, 第二侧底高程=self.rI0LtzJ7YZcnDOyE18I<double>, 第一侧水深=param(端点车站).4BkvxU1jidI2jo6QEpq<double>] out=[第一侧水面高程=local(车站水面高程), 第二侧水面高程=local(区间水面高程)] -> pc2
+      pc2 CALL 确定连接处过水情况 in=[过水宽度=param(有效过水宽度), 本步秒数=local(本步秒数), 第一侧积水量=param(端点车站).ZSCBmOks5hfDvQgGwnd<double>, 流量系数=param(水流系数), 第二侧积水量=self.xp71OUmAuU9BDQjVrDQ<double>, 过水控制高程=param(连接处底高程), 第二侧水面高程=local(区间水面高程), 第一侧水面高程=local(车站水面高程)] out=[当前过水流量=param(当前过水流量), 本步过水量=param(本步过水量)] -> pc3? -> pc4?
+      pc3 CALL 车站水流入区间 in=[车站=param(端点车站), 本步过水量=param(本步过水量)] out=[] -> pc0
+      pc4 CALL 区间水回流车站 in=[车站=param(端点车站), 本步过水量=param(本步过水量)] out=[] -> pc0
+  [TYPE] 文件初始化 (瞬时) params=[] nodes=7
+      pc0 CALL 文件初始化 in=[路径/标识=self.abc7c313392342d8bb2f1a44ef593248<String>] out=[文件信息=local(文件信息), 错误信息=local(错误信息), 是否成功=local(是否成功)] -> pc1
+      pc1 assignment.assign in=[a=local(文件信息).ULUgi4WDxQKuBMJXuen<String>] out=[b=self.f4b4b5db6ed34dab888b16dd765d6e1d<String>] -> pc2
+      pc2 assignment.assign in=[a=local(文件信息).JxS0RFjhdtbYQPcgLkA<String>] out=[b=self.cac814e0b36746918e3fc1417d61a2b9<String>] -> pc3
+      pc3 assignment.assign in=[a=local(文件信息).fW746fHkt66FWhN4YM1<double>] out=[b=self.bda2971e273d43348520736daa19043f<double>] -> pc4
+      pc4 assignment.assign in=[a=local(文件信息).Qw90Ju01RwLt1yd5L4G<long>] out=[b=self.8bf20fa960b54e8c9fd6447f3b56a3aa<long>] -> pc5
+      pc5 assignment.assign in=[a=local(文件信息).qeT9LBbjlW9XrzCmI6S<long>] out=[b=self.a866e42f8fda44218b66fd816ea74285<long>] -> pc6
+      pc6 assignment.assign in=[a=local(文件信息).KAdhc4M6XrYJ6Qwf5Gr<String>] out=[b=self.60d738e97a4e475ca0fac8ded93eb673<String>]
+  [INDEPENDENT] 查找前方车站 (瞬时) params=[I:当前线路与列车<E:LM3IeUACJIRWE5PKqrG>, O:是否找到<boolean>, O:前方线路与车站<E:bU09sM7lboHNQ4yfpX8>] nodes=16
+      pc0 compare.eq in=[a=param(当前线路与列车).u79Sh40LbloyGRW4zMk<boolean>, b=const(里程增大方向)] out=[] -> pc1? -> pc2?
+      pc1 assignment.assign in=[a=const(里程减小方向)] out=[b=local(方向系数)] -> pc3
+      pc2 assignment.assign in=[a=const(里程增大方向)] out=[b=local(方向系数)] -> pc3
+      pc3 compare.ge in=[a=builtin(LENGTH of instance(ue1TzOuUYomKixhyqSU)), b=local(车站标识)] out=[] -> pc4? -> pc5?
+      pc4 compare.gt in=[a=local(最近距离), b=const(定值584ce308543241a398762b3685167615)] out=[] -> pc6? -> pc7?
+      pc5 innerCollectionArray.getByIndex in=[标识=local(车站标识)] out=[元素=local(临时线路与车站)] -> pc8
+      pc6 assignment.assign in=[a=const(未找到)] out=[b=param(是否找到)]
+      pc7 assignment.assign in=[a=const(找到)] out=[b=param(是否找到)]
+      pc8 arithmetic.minus in=[a=local(临时线路与车站).qAxmfURJraF6VumzkyH<double>, b=param(当前线路与列车).h2d1gowrlEtddEalcvT<double>] out=[] -> pc9
+      pc9 arithmetic.multiply in=[a=out(qo3EKXWmgASKmrb5CzK.c), b=local(方向系数)] out=[c=local(候选距离)] -> pc10
+      pc10 compare.gt in=[a=local(候选距离), b=const(定值584ce308543241a398762b3685167615)] out=[] -> pc11? -> pc12?
+      pc11 automatic.inc in=[a=local(车站标识)] out=[a=local(车站标识)] -> pc3
+      pc12 compare.eq in=[a=local(最近距离), b=const(定值584ce308543241a398762b3685167615)] out=[] -> pc13? -> pc14?
+      pc13 assignment.assign in=[a=local(候选距离)] out=[b=local(最近距离)] -> pc15
+      pc14 compare.lt in=[a=local(候选距离), b=local(最近距离)] out=[] -> pc13? -> pc11?
+      pc15 assignment.assign in=[a=local(临时线路与车站)] out=[b=param(前方线路与车站)] -> pc11
+  [TYPE] 离站 (瞬时) params=[I:车站与停靠列车<E:Pcp7gmk5wwGxDtnmiCR>] nodes=2
+      pc0 assignment.assign in=[a=builtin(SIM_DATETIME)] out=[b=param(车站与停靠列车).wSFHvbuLXhbgxEbboPe<long>] -> pc1
+      pc1 assignment.assign in=[a=self.cgZTF4S44iiPjp29iem<double>] out=[b=self.NAfVPmumtjToqjUB8dS<double>] post=OUT_CHANGE(行驶)
+  [TYPE] 读取文本内容 (瞬时) params=[O:文件内容<String>] nodes=1
+      pc0 CALL 读取文本内容 in=[路径/标识=self.abc7c313392342d8bb2f1a44ef593248<String>] out=[是否成功=local(是否成功), 文件内容=param(文件内容)]
+  [INDEPENDENT] 确定两端水位 (瞬时) params=[I:第一侧底高程<double>, O:第一侧水面高程<double>, I:第一侧水深<double>, O:第二侧水面高程<double>, I:第二侧底高程<double>, I:第二侧水深<double>] nodes=2
+      pc0 arithmetic.add in=[a=param(第一侧底高程), b=param(第一侧水深)] out=[c=param(第一侧水面高程)] -> pc1
+      pc1 arithmetic.add in=[a=param(第二侧底高程), b=param(第二侧水深)] out=[c=param(第二侧水面高程)]
+  [TYPE] 水深变化 (瞬时) params=[] nodes=8
+      pc0 arithmetic.multiply in=[a=self.T3HPIYB5pFkj92hQYOb<double>, b=self.OEelBaTieUbL1NIgO4p<double>] out=[] -> pc1
+      pc1 arithmetic.divide in=[a=self.xp71OUmAuU9BDQjVrDQ<double>, b=out(RjUwi1DVYUIOfdKbBl3.c)] out=[c=self.SGp0FdRmQRJCz9bv1VR<double>] -> pc2
+      pc2 compare.gt in=[a=self.SGp0FdRmQRJCz9bv1VR<double>, b=const(定值8b06b50735c84f0e8868d121dc22d11a)] out=[] -> pc3? -> pc4?
+      pc3 CALL 区间无积水 in=[] out=[] post=OUT_CHANGE(无积水)
+      pc4 CALL 区间积水 in=[] out=[] post=OUT_CHANGE(积水) -> pc5
+      pc5 compare.gt in=[a=self.SGp0FdRmQRJCz9bv1VR<double>, b=self.pHyh35RSnAbxKHUj22z<double>] out=[] -> pc6? -> pc7?
+      pc6 assignment.assign in=[a=const(允许放行)] out=[b=self.WtxrTa8TynYayEOJ5MS<boolean>]
+      pc7 assignment.assign in=[a=const(不允许放行)] out=[b=self.WtxrTa8TynYayEOJ5MS<boolean>]
+  [TYPE] 水流交换间隔 (耗时) params=[O:本步秒数<long>] nodes=3
+      pc0 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(本步秒)] -> pc1
+      pc1 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(下步秒)] -> pc2
+      pc2 arithmetic.minus in=[a=local(下步秒), b=local(本步秒)] out=[c=param(本步秒数)]
+  [INDEPENDENT] 确定连接处过水情况 (瞬时) params=[I:过水控制高程<double>, I:过水宽度<double>, I:第一侧水面高程<double>, O:当前过水流量<double>, I:第一侧积水量<double>, O:第一侧流向第二侧<boolean>, I:第二侧积水量<double>, O:本步过水量<double>, I:第二侧水面高程<double>, I:本步秒数<long>, I:流量系数<double>] nodes=20
+      pc0 compare.gt in=[a=param(第一侧水面高程), b=param(第二侧水面高程)] out=[] -> pc1? -> pc2?
+      pc1 assignment.assign in=[a=param(第一侧水面高程)] out=[b=local(流出侧水面高程)] -> pc3
+      pc2 assignment.assign in=[a=param(第二侧水面高程)] out=[b=local(流出侧水面高程)] -> pc4
+      pc3 assignment.assign in=[a=param(第二侧水面高程)] out=[b=local(流入侧水面高程)] -> pc5
+      pc4 assignment.assign in=[a=param(第一侧水面高程)] out=[b=local(流入侧水面高程)] -> pc6
+      pc5 assignment.assign in=[a=param(第一侧积水量)] out=[b=local(流出侧积水量)] -> pc7
+      pc6 assignment.assign in=[a=param(第二侧积水量)] out=[b=local(流出侧积水量)] -> pc8
+      pc7 assignment.assign in=[a=local(第一侧流向第二侧)] out=[b=param(第一侧流向第二侧)] -> pc9
+      pc8 assignment.assign in=[a=local(第二侧流向第一侧)] out=[b=param(第一侧流向第二侧)] -> pc9
+      pc9 arithmetic.max in=[a=local(流入侧水面高程), b=param(过水控制高程)] out=[] -> pc10
+      pc10 arithmetic.minus in=[a=local(流出侧水面高程), b=out(yJl9CMWJapH2CV6zNRt.c)] out=[] -> pc11
+      pc11 arithmetic.max in=[a=out(lVZIRDr70dDepaiflGC.c), b=const(定值2d9f87a1f2e148f1aaa9491526c11e90)] out=[c=local(有效龙头)] -> pc12
+      pc12 arithmetic.multiply in=[a=param(过水宽度), b=param(流量系数)] out=[] -> pc13
+      pc13 arithmetic.multiply in=[a=out(kdz8VJJHBpWkBA4zr74.c), b=const(定值ca8aee5600174299b43c6b63823d0242)] out=[] -> pc14
+      pc14 arithmetic.power [slow] in=[a=local(有效龙头), b=const(定值12a8bf15ded2429ca2ac7aaf2a28e1ac)] out=[] -> pc15
+      pc15 arithmetic.multiply in=[a=out(QD8w2i3SjJJQQY3PCPG.c), b=out(llW6sG1qSzYvIHRyWqK.c)] out=[c=local(预计过水流量)] -> pc16
+      pc16 arithmetic.multiply in=[a=local(预计过水流量), b=param(本步秒数)] out=[] -> pc17
+      pc17 arithmetic.min in=[a=out(8xlhFidRJ9zNcu7xdH5.c), b=local(流出侧积水量)] out=[c=param(本步过水量)] -> pc18
+      pc18 arithmetic.divide in=[a=param(本步过水量), b=param(本步秒数)] out=[] -> pc19
+      pc19 arithmetic.multiply in=[a=const(定值6250aba4219d4583b81fb462976ae901), b=out(fLvMvl6LWcI7iBNQUEc.c)] out=[c=param(当前过水流量)]
+  [INDEPENDENT] 获取本步时长 (耗时) params=[O:本步秒数<long>] nodes=3
+      pc0 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(当前步进秒)] -> pc1
+      pc1 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(下一步进秒)] -> pc2
+      pc2 arithmetic.minus in=[a=local(下一步进秒), b=local(当前步进秒)] out=[c=param(本步秒数)]
+  [TYPE] 计算处置时间 (瞬时) params=[] nodes=5
+      pc0 arithmetic.divide in=[b=const(换算)] out=[] -> pc1
+      pc1 arithmetic.multiply in=[a=out(mZlay2ShtC5ySAKduQ8.c), b=self.Y11bqLOOJYHpIDUyHQv.akg8YG3yPjlwkHg2h7v<double>] out=[] -> pc2
+      pc2 arithmetic.multiply in=[a=out(AdCN275oxVaQM3YDRTc.c), b=self.Y11bqLOOJYHpIDUyHQv.0cMt7C0dg5JuQEXCcbw<double>] out=[c=local(汇水速度)] -> pc3
+      pc3 arithmetic.divide in=[a=self.Y11bqLOOJYHpIDUyHQv.ISBiulbqRYu9DTLTdBX<double>, b=const(换算)] out=[] -> pc4
+      pc4 arithmetic.minus in=[a=local(汇水速度), b=out(r49iW7D2MdbuhvRBWpQ.c)] out=[c=local(净积水速度)]
+  [TYPE] 区间行驶 (耗时) params=[I:区间与区间内列车<E:9ADRltdLnwn0Xr8dmcT>, I:当前线路里程<double>, I:是否沿里程增大方向<boolean>] nodes=9
+      pc0 assignment.assign in=[a=self.cgZTF4S44iiPjp29iem<double>] out=[b=self.NAfVPmumtjToqjUB8dS<double>] -> pc1
+      pc1 assignment.clear in=[a=param(区间与区间内列车).Z87fcv6mx4wqsz11jWe<double>] out=[a=param(区间与区间内列车).Z87fcv6mx4wqsz11jWe<double>] -> pc2
+      pc2 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(开始时刻)] -> pc3
+      pc3 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(当前时刻)] -> pc4
+      pc4 arithmetic.minus in=[a=local(当前时刻), b=local(开始时刻)] out=[c=local(行驶间隔)] -> pc5
+      pc5 CALL 沿区间前进 in=[行驶间隔=local(行驶间隔), 地铁区间=param(区间与区间内列车).N6oxK59ZIJFsieHFjtw<E:6iap5H5evnoP56yto1c>, 已行驶距离=param(区间与区间内列车).Z87fcv6mx4wqsz11jWe<double>, 目标车站=param(区间与区间内列车).0KoAaqP8B4qvCCaYplK<E:rFXJKdFfEChoRdeX7aT>, 是否沿里程增大方向=param(是否沿里程增大方向), 当前线路里程=param(当前线路里程)] out=[已行驶距离=param(区间与区间内列车).Z87fcv6mx4wqsz11jWe<double>, 当前线路里程=param(当前线路里程)] -> pc6
+      pc6 compare.ge in=[a=param(区间与区间内列车).Z87fcv6mx4wqsz11jWe<double>, b=param(区间与区间内列车).N6oxK59ZIJFsieHFjtw.T3HPIYB5pFkj92hQYOb<double>] out=[] -> pc2? -> pc7?
+      pc7 assignment.assign in=[a=param(区间与区间内列车).0KoAaqP8B4qvCCaYplK.bsd5Noel9k5tlgpoOWP<E:c4998ee1638a4a9ca0029f21d57850d4>] out=[b=self.f2Z0TqRbENyGCigHGVL<E:c4998ee1638a4a9ca0029f21d57850d4>] -> pc8
+      pc8 assignment.assign in=[a=const(到达下一车战)] out=[b=param(区间与区间内列车).bWCZ6rcu8LXoqxCT1TG<boolean>]
+  [TYPE] 计算降雨汇水 (耗时) params=[I:当前雨强<double>, O:当前汇水流量<double>, O:本步汇水量<double>] nodes=11
+      pc0 compare.gt in=[a=param(当前雨强), b=const(定值6e295c0bbbfc4eafac40328a0d9f3405)] out=[] -> pc1? -> pc2?
+      pc1 assignment.clear in=[a=param(当前汇水流量)] out=[a=param(当前汇水流量)] -> pc3
+      pc2 arithmetic.divide in=[a=param(当前雨强), b=const(mm/min换算成m/s)] out=[] -> pc4
+      pc3 assignment.clear in=[a=param(本步汇水量)] out=[a=param(本步汇水量)] -> pc0
+      pc4 arithmetic.multiply in=[a=out(lEiboXyj7ShlUhWWQa4.c), b=self.akg8YG3yPjlwkHg2h7v<double>] out=[] -> pc5
+      pc5 arithmetic.multiply in=[a=out(03PuHTbm5tlsA4MM5yz.c), b=self.0cMt7C0dg5JuQEXCcbw<double>] out=[c=param(当前汇水流量)] -> pc6
+      pc6 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(当前步进秒)] -> pc7
+      pc7 assignment.assign in=[a=builtin(SIM_ELAPSED_SECONDS)] out=[b=local(下一步进秒)] -> pc8
+      pc8 arithmetic.minus in=[a=local(下一步进秒), b=local(当前步进秒)] out=[c=local(本步秒数)] -> pc9
+      pc9 arithmetic.multiply in=[a=local(本步秒数), b=param(当前汇水流量)] out=[c=param(本步汇水量)] -> pc10
+      pc10 CALL 积水变化 in=[水量变化值=param(本步汇水量)] out=[]
+  [TYPE] 区间水回流车站 (瞬时) params=[I:车站<E:rFXJKdFfEChoRdeX7aT>, I:本步过水量<double>] nodes=3
+      pc0 arithmetic.reverse in=[a=param(本步过水量)] out=[] -> pc1
+      pc1 CALL 积水变化 in=[水量变化=out(5DdWcGyOM4XVDIOA2xG.b)] out=[] -> pc2
+      pc2 CALL 积水变化 in=[水量变化值=param(本步过水量)] out=[]
+  [TYPE] 停站 (耗时) params=[I:车站与停靠列车<E:Pcp7gmk5wwGxDtnmiCR>] nodes=6
+      pc0 assignment.assign in=[a=param(车站与停靠列车).lrd9m2v82kyD3mrdk8p.bsd5Noel9k5tlgpoOWP<E:c4998ee1638a4a9ca0029f21d57850d4>] out=[b=self.6q4BLT4xe5rzYrXrlde<E:c4998ee1638a4a9ca0029f21d57850d4>] -> pc1
+      pc1 assignment.assign in=[a=self.6q4BLT4xe5rzYrXrlde<E:c4998ee1638a4a9ca0029f21d57850d4>] out=[b=self.f2Z0TqRbENyGCigHGVL<E:c4998ee1638a4a9ca0029f21d57850d4>] -> pc2
+      pc2 assignment.assign in=[a=builtin(SIM_DATETIME)] out=[b=param(车站与停靠列车).HAIVzK7lukwXbFKbuIu<long>] -> pc3
+      pc3 compare.gt in=[a=param(车站与停靠列车).Bslj13aZSBZZ50cq6uY<long>, b=local(等待时长)] out=[] -> pc4? -> pc5?
+      pc4 assignment.assign in=[a=local(允许离站)] out=[b=param(车站与停靠列车).fOJkK885q6NfNdBgF34<boolean>]
+      pc5 automatic.inc in=[a=local(等待时长)] out=[a=local(等待时长)] -> pc3
+  [TYPE] 站内水回流地面 (瞬时) params=[I:区域<E:eIdrNAXcjZ1OqUVr3LB>, I:本步过水量<double>] nodes=3
+      pc0 arithmetic.reverse in=[a=param(本步过水量)] out=[] -> pc1
+      pc1 CALL 积水变化 in=[水量变化值=out(h9x47XUa0qpawjO6Dtp.b)] out=[] -> pc2
+      pc2 CALL 积水变化 in=[水量变化值=param(本步过水量)] out=[]
+  [TYPE] 降雨 (耗时) params=[I:雨量序列<MAP:long:double>, O:当前雨强<double>, O:累计雨量<double>] nodes=5
+      pc0 CALL 获取雨量序列 in=[雨量序列新=local(可用雨量序列), 原雨量序列=param(雨量序列)] out=[] -> pc1
+      pc1 innerCollectionMap.containsKey in=[键=builtin(SIM_DATETIME)] out=[] -> pc2? -> pc3?
+      pc2 innerCollectionMap.getByKey in=[键=builtin(SIM_DATETIME)] out=[值=param(当前雨强)] -> pc4
+      pc3 automatic.incByVal [slow] in=[a=param(累计雨量), b=out(nma35koFPzznqfHDu3V.c)] out=[a=param(累计雨量)] -> pc1
+      pc4 arithmetic.divide in=[a=param(当前雨强), b=const(定值881ea9b0e2904dc99affff3803df9cb9)] out=[] -> pc3
+  [TYPE] 积水变化 (瞬时) params=[I:水量变化值<double>] nodes=6
+      pc0 arithmetic.add in=[a=self.ZSCBmOks5hfDvQgGwnd<double>, b=param(水量变化值)] out=[] -> pc1
+      pc1 arithmetic.max in=[a=out(G6xmqPT0TDwMP3HFhhO.c), b=const(定值69ffe6aafc6a4abfbf16fbbcff3a0c57)] out=[c=self.ZSCBmOks5hfDvQgGwnd<double>] -> pc2
+      pc2 arithmetic.divide in=[a=self.ZSCBmOks5hfDvQgGwnd<double>, b=self.TGW59nqUVYBoQzfbnSa<double>] out=[c=self.4BkvxU1jidI2jo6QEpq<double>] -> pc3
+      pc3 compare.gt in=[a=self.4BkvxU1jidI2jo6QEpq<double>, b=const(定值69ffe6aafc6a4abfbf16fbbcff3a0c57)] out=[] -> pc4? -> pc5?
+      pc4 CALL 车站有积水 in=[] out=[] post=OUT_CHANGE(积水)
+      pc5 CALL 车站无积水 in=[] out=[] post=OUT_CHANGE(无积水)
+  [TYPE] 进站 (瞬时) params=[] nodes=1
+      pc0 assignment.clear in=[a=self.NAfVPmumtjToqjUB8dS<double>] out=[a=self.NAfVPmumtjToqjUB8dS<double>] post=OUT_CHANGE(停站)
+  [TYPE] 积水变化 (瞬时) params=[I:水量变化<double>] nodes=3
+      pc0 arithmetic.add in=[a=self.xp71OUmAuU9BDQjVrDQ<double>, b=param(水量变化)] out=[] -> pc1
+      pc1 arithmetic.max in=[a=out(AKdE7Up4eFMhU1QfraP.c), b=const(定值9bc02657f5b44db8b09cda715db6ee94)] out=[c=self.xp71OUmAuU9BDQjVrDQ<double>] -> pc2
+      pc2 CALL 水深变化 in=[] out=[]
+  [TYPE] 排水 (瞬时) params=[] nodes=3
+      pc0 arithmetic.divide in=[a=const(定值41413d24084b41d3af3268d56dbed9fd), b=const(定值fcc40fef14034824a526acaecf1cfb80)] out=[] -> pc1
+      pc1 arithmetic.min in=[a=out(OBw9hw4ejbwGNANBDk1.c), b=self.xp71OUmAuU9BDQjVrDQ<double>] out=[c=local(当前排水量)] -> pc2
+      pc2 automatic.decByVal [slow] in=[a=self.xp71OUmAuU9BDQjVrDQ<double>, b=local(当前排水量)] out=[a=self.xp71OUmAuU9BDQjVrDQ<double>]
+  [TYPE] 车站水流入区间 (瞬时) params=[I:车站<E:rFXJKdFfEChoRdeX7aT>, I:本步过水量<double>] nodes=3
+      pc0 CALL 积水变化 in=[水量变化=param(本步过水量)] out=[] -> pc1
+      pc1 arithmetic.reverse in=[a=param(本步过水量)] out=[] -> pc2
+      pc2 CALL 积水变化 in=[水量变化值=out(qBdju7dZO7YMZP08oco.b)] out=[]
+  [SCENE] 4生成对象并把是变成否 (瞬时) params=[O:文本1<boolean>] nodes=1
+      pc0 assignment.assign in=[a=const(定值b2044753c2c9410bbaf95842e538fa20)] out=[b=param(文本1)]
+  [TYPE] 挡水墙承受水压 (瞬时) params=[I:本步秒数<long>, I:区域水面高程<double>] nodes=7
+      pc0 compare.eq in=[a=self.KsKWUZghMV0qp4PvIP9<EN:nrgTvUq55JNeiMMlawc>, b=local(挡水墙完好)] out=[] -> pc1?
+      pc1 arithmetic.add in=[a=self.HsJlhF4Qq0meQjVXQl5<double>, b=self.9cgmJtgAfA5THCTQX1Q<double>] out=[c=local(失效判定高程)] -> pc2
+      pc2 compare.ge in=[a=param(区域水面高程), b=local(失效判定高程)] out=[] -> pc3? -> pc4?
+      pc3 automatic.incByVal [slow] in=[a=self.SnxMu3A2siAAnOyycRr<double>, b=param(本步秒数)] out=[a=self.SnxMu3A2siAAnOyycRr<double>] -> pc5
+      pc4 assignment.clear in=[a=self.SnxMu3A2siAAnOyycRr<double>] out=[a=self.SnxMu3A2siAAnOyycRr<double>]
+      pc5 compare.ge in=[a=self.SnxMu3A2siAAnOyycRr<double>, b=self.2x8UFMHABjbk7XdvGSq<double>] out=[] -> pc6?
+      pc6 CALL 挡水墙失效 in=[] out=[] post=OUT_CHANGE(失效)
+  [SCENE] 3转换为行驶 (瞬时) params=[] nodes=1
+      pc0 CALL 过程1 in=[] out=[] post=OUT_CHANGE(行驶)
+  [TYPE] 形成车站与列车的关联 (瞬时) params=[O:车站与停靠列车<E:Pcp7gmk5wwGxDtnmiCR>] nodes=8
+      pc0 compare.ge in=[a=builtin(LENGTH of instance(ue1TzOuUYomKixhyqSU)), b=local(标识)] out=[] -> pc1?
+      pc1 innerCollectionArray.getByIndex in=[标识=local(标识)] out=[元素=local(线路与车站)] -> pc2
+      pc2 compare.eq in=[a=local(线路与车站).qAxmfURJraF6VumzkyH<double>, b=self.h2d1gowrlEtddEalcvT<double>] out=[] -> pc3? -> pc4?
+      pc3 automatic.inc in=[a=local(标识)] out=[a=local(标识)] -> pc0
+      pc4 CALL 生成关联 in=[] out=[] post=RESULT() -> pc5
+      pc5 assignment.assignRef in=[a=instance(oQU5zzFLJwxrRLNNWhA)] out=[b=local(临时关联).Y73IW1ewl3mlUJlQvWU<E:rWqQrIoiDfDYWa5PiWk>] -> pc6
+      pc6 assignment.assignRef in=[a=local(线路与车站).WaXfPfoMap0FvB1b0Sf<E:rFXJKdFfEChoRdeX7aT>] out=[b=local(临时关联).lrd9m2v82kyD3mrdk8p<E:rFXJKdFfEChoRdeX7aT>] -> pc7
+      pc7 assignment.assignRef in=[a=local(临时关联)] out=[b=param(车站与停靠列车)]
+  [SCENE] 1转换为停站 (耗时) params=[] nodes=1
+      pc0 CALL 过程1 in=[] out=[] post=OUT_CHANGE(停站)
+  [TYPE] 区域与站内水流交换 (耗时) params=[O:当前过水流量<double>, O:本步过水量<double>, I:区域<E:eIdrNAXcjZ1OqUVr3LB>] nodes=6
+      pc0 CALL 水流交换间隔 in=[] out=[本步时长=local(本步秒数)] -> pc1
+      pc1 CALL 确定两端水位 in=[第一侧底高程=param(区域).w3KEShYZsq5e07tNgCu<double>, 第一侧水深=param(区域).dcrXMnbxACceh8RH8aG<double>, 第二侧底高程=self.JbCoZ3N3pGfxVn1fAHA<double>, 第二侧水深=self.4BkvxU1jidI2jo6QEpq<double>] out=[第一侧水面高程=local(区域水面高程), 第二侧水面高程=local(站内水面高程)] -> pc2
+      pc2 CALL 挡水墙承受水压 in=[本步秒数=local(本步秒数), 区域水面高程=local(区域水面高程)] out=[] -> pc3
+      pc3 CALL 入口过水 in=[区域水面高程=local(区域水面高程), 本步秒数=local(本步秒数), 站内水面高程=local(站内水面高程), 区域积水量=param(区域).I5aMxoukyy1DY1moXdW<double>] out=[本步过水量=param(本步过水量), 当前过水流量=param(当前过水流量)] -> pc4? -> pc5?
+      pc4 CALL 地面水流入车站 in=[本步过水量=param(本步过水量), 区域=param(区域)] out=[] -> pc0
+      pc5 CALL 站内水回流地面 in=[本步过水量=param(本步过水量), 区域=param(区域)] out=[] -> pc0
+  [TYPE] 地面水流入车站 (瞬时) params=[I:区域<E:eIdrNAXcjZ1OqUVr3LB>, I:本步过水量<double>] nodes=3
+      pc0 CALL 积水变化 in=[水量变化值=param(本步过水量)] out=[] -> pc1
+      pc1 arithmetic.reverse in=[a=param(本步过水量)] out=[] -> pc2
+      pc2 CALL 积水变化 in=[水量变化值=out(KGsT6SL7LC9IoJkEKVv.b)] out=[]
+  [TYPE] 形成区间与列车的关联 (瞬时) params=[O:区间与区间内列车<E:9ADRltdLnwn0Xr8dmcT>] nodes=21
+      pc0 compare.ge in=[a=builtin(LENGTH of instance(eZJgQWqYwRKpOTcwSYQ)), b=local(区间标识)] out=[] -> pc1? -> pc2?
+      pc1 innerCollectionArray.getByIndex in=[标识=local(区间标识)] out=[元素=local(临时线路与区间)] -> pc3
+      pc2 compare.eq in=[a=self.VwizqIil29sv75BuLPm<boolean>, b=const(往返)] out=[] -> pc4?
+      pc3 compare.eq in=[a=self.u79Sh40LbloyGRW4zMk<boolean>, b=const(沿里程增大方向)] out=[] -> pc5? -> pc6?
+      pc4 compare.eq in=[a=local(本次已折返), b=const(本次已折返)] out=[] -> pc7?
+      pc5 compare.ge in=[a=self.h2d1gowrlEtddEalcvT<double>, b=local(临时线路与区间).NxqGJkz3z98mPhNtuuM<double>] out=[] -> pc8
+      pc6 compare.gt in=[a=self.h2d1gowrlEtddEalcvT<double>, b=local(临时线路与区间).NxqGJkz3z98mPhNtuuM<double>] out=[] -> pc9
+      pc7 assignment.assign in=[a=const(往返)] out=[b=local(本次已折返)] -> pc10
+      pc8 compare.lt in=[a=self.h2d1gowrlEtddEalcvT<double>, b=local(临时线路与区间).2LrLyk9y9KZy4NbmMDp<double>] out=[] -> pc11
+      pc9 compare.le in=[a=self.h2d1gowrlEtddEalcvT<double>, b=local(临时线路与区间).2LrLyk9y9KZy4NbmMDp<double>] out=[] -> pc12
+      pc10 logic.logNot in=[a=self.u79Sh40LbloyGRW4zMk<boolean>] out=[b=self.u79Sh40LbloyGRW4zMk<boolean>] -> pc13
+      pc11 logic.logAnd in=[a=out(VzOjTYcmFvVkfhQ9fMC.c), b=out(Kf8iFKeniVB7BoUrPM0.c)] out=[] -> pc14? -> pc15?
+      pc12 logic.logAnd in=[a=out(GtP4dJ6UOgx0EXqhX5V.c), b=out(Lz2yuv6MrwztklOisL0.c)] out=[] -> pc14? -> pc15?
+      pc13 assignment.resetToOne in=[a=local(区间标识)] out=[a=local(区间标识)] -> pc0
+      pc14 automatic.inc in=[a=local(区间标识)] out=[a=local(区间标识)] -> pc0
+      pc15 CALL 查找前方车站 in=[当前线路与列车=self] out=[前方线路与车站=local(线路与车站)] -> pc2? -> pc16?
+      pc16 CALL 创建关联 in=[] out=[] post=RESULT() -> pc17
+      pc17 assignment.assignRef in=[a=local(线路与车站).WaXfPfoMap0FvB1b0Sf<E:rFXJKdFfEChoRdeX7aT>] out=[b=local(临时关联).0KoAaqP8B4qvCCaYplK<E:rFXJKdFfEChoRdeX7aT>] -> pc18
+      pc18 assignment.assignRef in=[a=instance(oQU5zzFLJwxrRLNNWhA)] out=[b=local(临时关联).vg1gpRPbsoxrtQkhrDO<E:rWqQrIoiDfDYWa5PiWk>] -> pc19
+      pc19 assignment.assignRef in=[a=local(临时线路与区间).gUjJuzUZZMDkhW2LEZ5<E:6iap5H5evnoP56yto1c>] out=[b=local(临时关联).N6oxK59ZIJFsieHFjtw<E:6iap5H5evnoP56yto1c>] -> pc20
+      pc20 assignment.assignRef in=[a=local(临时关联)] out=[b=param(区间与区间内列车)]
+  [TYPE] 读取文本内容 (瞬时) params=[I:路径/标识<String>, O:是否成功<boolean>, O:文件内容<String>] nodes=0
+  [TYPE] 过程1 (瞬时) params=[I:文本1<MAP:long:double>] nodes=0
+  [TYPE] 转换为积水状态 (瞬时) params=[] nodes=0
+  [TYPE] 创建关联 (瞬时) params=[] nodes=0
+  [TYPE] 区间无积水 (瞬时) params=[] nodes=0
+  [TYPE] 挡水墙失效 (瞬时) params=[] nodes=0
+  [TYPE] 车站有积水 (瞬时) params=[] nodes=0
+  [TYPE] 判断文件是否为空 (瞬时) params=[I:路径/标识<String>, O:是否成功<boolean>, O:是否为空<boolean>] nodes=0
+  [TYPE] 转换为无积水状态 (瞬时) params=[] nodes=0
+  [TYPE] 文件初始化 (瞬时) params=[I:路径/标识<String>, O:是否成功<boolean>, O:文件信息<E:kBqMrvjfh8tkTrIKWEk>, O:错误信息<String>] nodes=0
+  [SCENE] 过程1 (耗时) params=[] nodes=0
+  [TYPE] 逐行读取文件内容 (耗时) params=[I:路径/标识<String>, O:批次号<long>, O:文件内容<String>] nodes=0
+  [TYPE] 形成备选响应方案 (瞬时) params=[] nodes=0
+  [TYPE] 记录危险暴露 (瞬时) params=[] nodes=0
+  [TYPE] 更新疏散情况 (瞬时) params=[] nodes=0
+  [TYPE] 生成关联 (瞬时) params=[] nodes=0
+  [TYPE] 车站无积水 (瞬时) params=[] nodes=0
+  [TYPE] 执行方案 (瞬时) params=[] nodes=0
+  [TYPE] 区间积水 (瞬时) params=[] nodes=0
+  [TYPE] 更新受困情况 (瞬时) params=[] nodes=0
+  [SCENE] 过程1 (瞬时) params=[] nodes=0
+  [TYPE] 判断文件是否存在 (瞬时) params=[I:路径/标识<String>, O:是否存在<boolean>, O:是否成功<boolean>] nodes=0
+  TRIGGER invocation 文件初始化 : /abc7c313392342d8bb2f1a44ef593248 v 
+  TRIGGER condition 区域与站内水流交换 : gEzBWiOUbrpvxwZ8Pv0/pdiEfPgAApLsNQ1Cp5j sa 积水
+  TRIGGER invocation 进站 : /0SOv8AQOpa2y8sC7shh ra 
+  TRIGGER invocation 进站 : /0SOv8AQOpa2y8sC7shh rv 
+  TRIGGER invocation 停站 : OxQTIIgXFvoh8WDwjOh/mQs84jpKcMkngxFWdBT sa 停站
+  TRIGGER invocation 离站 : 0SOv8AQOpa2y8sC7shh/fOJkK885q6NfNdBgF34 v 
+  TRIGGER invocation 形成区间与列车的关联 : OxQTIIgXFvoh8WDwjOh/mQs84jpKcMkngxFWdBT sa 行驶
+  TRIGGER invocation 形成车站与列车的关联 : x3P9T6T0WTa3KXjrMbT/bWCZ6rcu8LXoqxCT1TG v 
+  TRIGGER fixed 区间行驶 : /x3P9T6T0WTa3KXjrMbT ra 
+  TRIGGER fixed 区间行驶 : /x3P9T6T0WTa3KXjrMbT rv 
+  TRIGGER condition 地表排水 : /pdiEfPgAApLsNQ1Cp5j sa 积水
+  TRIGGER condition 车站与区间水流交换 : cs7DzmGZqyZnfP20Gsy/ZYx31ZY8GstGNur40z2 sa 积水
+  TRIGGER invocation 1转换为停站 : /Cwaojup8iZOpBuisiCL a 
+  TRIGGER invocation 2把否变成是 : /xuFANgtC3Dzw6jUE1H4 sa 停站
+  TRIGGER invocation 3转换为行驶 : /GKzjQYuz4zLjBQGdWxy v 
+  TRIGGER invocation 4生成对象并把是变成否 : /xuFANgtC3Dzw6jUE1H4 sa 行驶
+  DEFAULT_START type=53fc8e5ecfa54f1ba763324fcc8ff234 hostPath=[] -> dv:designView_659efee68fd74a0a86fa968e044a59aa
+  DEFAULT_START type=LM3IeUACJIRWE5PKqrG hostPath=[] -> dv:designView_tOSCSMGoda2sHYuuDqN
+  DEFAULT_START type=bX4vMzSlVMdk6QjF7CD hostPath=[] -> dv:designView_vFHwnod6GqHo3Bde4P5
+  WARN [dv:designView_1BqELDRmZFoiytzNKQ5] 节点 8xY3p4IVys3xWGhAeTq（减）位于回边循环内，且两个输入在循环体内每圈都重新赋值为当前量化时刻：差值恒为 0；请把起始量的赋值移出循环，或改用 ΔT（CUR-PROCESS-TIME 图元）
+  WARN [dv:designView_XLrKPtiJlmUbySIChuF] 节点 Jr92qXE7Cfk24Sw7wxY（减）位于回边循环内，且两个输入在循环体内每圈都重新赋值为当前量化时刻：差值恒为 0；请把起始量的赋值移出循环，或改用 ΔT（CUR-PROCESS-TIME 图元）
+  WARN [owner:GY5EmLZdeZGsXBJcHef] 输出转换的目标枚举成员不唯一，按画布位置取第一个
+  WARN [owner:LM3IeUACJIRWE5PKqrG] 输出转换的目标枚举成员不唯一，按画布位置取第一个
+  WARN [owner:yALuBQFoqC0OJuH31TP] 输出转换的目标枚举成员不唯一，按画布位置取第一个

@@ -1,0 +1,11 @@
+com/groma/studio/importer/CorpusManifestEntry.class
+com/groma/studio/importer/ModelImportConfig.class
+com/groma/studio/importer/CorpusCoverageAnalyzer$CoverageReport.class
+com/groma/studio/importer/ReadOnlyModelFetcher.class
+com/groma/studio/importer/IncrementalModelImporter.class
+com/groma/studio/importer/CorpusCoverageAnalyzer.class
+com/groma/studio/importer/ImmutableModelStore$1.class
+com/groma/studio/importer/ImmutableModelStore.class
+com/groma/studio/importer/ModelFetchException.class
+com/groma/studio/importer/ImmutableModelStore$StoreOutcome.class
+com/groma/studio/importer/ReadOnlyModelFetcher$FetchedModelPair.class

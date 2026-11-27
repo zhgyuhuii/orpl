@@ -1,0 +1,8 @@
+com/groma/studio/naming/SymbolLockTable$1.class
+com/groma/studio/naming/SymbolLockTable.class
+com/groma/studio/naming/SanitizedLabel.class
+com/groma/studio/naming/DeterministicNamingFacade.class
+com/groma/studio/naming/AlibabaScopeSymbolGuard.class
+com/groma/studio/naming/DomainGlossaryTokenizer.class
+com/groma/studio/naming/DomainGlossaryTokenizer$HexUtil.class
+com/groma/studio/naming/IdentifierSanitizer.class

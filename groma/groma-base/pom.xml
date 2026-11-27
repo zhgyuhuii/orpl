@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.groma</groupId>
+        <artifactId>groma</artifactId>
+        <version>1.0.0</version>
+    </parent>
+    <artifactId>groma-base</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>groma-base-common</module>
+        <module>groma-base-engine</module>
+        <module>groma-base-websocket</module>
+        <module>groma-base-connector</module>
+        <module>groma-base-mcp</module>
+    </modules>
+</project>

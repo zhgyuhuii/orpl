@@ -1,0 +1,4 @@
+# 严守 FE-R02：绝不忽略 package-lock.json
+node_modules/
+dist/
+coverage/

@@ -1,0 +1,33 @@
+{
+  "manifestFormatVersion": "1.0",
+  "modelCode": "emergency-deduction",
+  "modelVersion": "825",
+  "modelLabel": "应急决策推演-关联",
+  "processes": [
+    {
+      "ref": "compute_connection_flow",
+      "entityId": "4b19b9f71d134f588bb6407e2dee8e49",
+      "name": "确定连接处过水情况",
+      "description": "根据第一侧水面高程、第二侧水面高程、过水控制高程与过水宽度，采用宽顶堰流公式计算连接处瞬时过水流量(m3/s)",
+      "kind": "operator",
+      "timeConsuming": false,
+      "inputSchema": {
+        "type": "object",
+        "required": ["elevationA", "elevationB", "controlElev", "weirWidth"],
+        "properties": {
+          "elevationA": { "type": "number", "unit": "m", "description": "第一侧水面高程（m）" },
+          "elevationB": { "type": "number", "unit": "m", "description": "第二侧水面高程（m）" },
+          "controlElev": { "type": "number", "unit": "m", "description": "过水控制高程（m）" },
+          "weirWidth": { "type": "number", "unit": "m", "minimum": 0.1, "description": "过水宽度（m）" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "flowRateM3PerSec": { "type": "number", "unit": "m3/s", "description": "过水流量（正值代表A流向B）" }
+        }
+      },
+      "preconditions": []
+    }
+  ]
+}
