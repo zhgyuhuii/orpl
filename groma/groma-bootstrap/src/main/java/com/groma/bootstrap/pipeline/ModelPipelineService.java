@@ -10,6 +10,7 @@ import com.groma.studio.compiler.VersionPinnedHotSwapManager;
 import com.groma.studio.ir.CompilePlanIR;
 import com.groma.studio.ir.GromaModuleIR;
 import com.groma.studio.parser.AbModelMergerAndParser;
+import com.groma.studio.parser.StaticModelValidator;
 import com.groma.studio.sync.SyncReport;
 import com.groma.studio.sync.WorkspaceSyncService;
 import org.slf4j.Logger;
@@ -82,7 +83,24 @@ public class ModelPipelineService {
         // 1. 解析（A+B 合并 → 编译计划）
         GromaModuleIR ir = new AbModelMergerAndParser().parse(dataA, dataB);
         CompilePlanIR plan = ir.compilePlan();
-        List<String> warnings = plan.warnings();
+        List<String> warnings = new ArrayList<>(plan.warnings());
+        // 1.5 静态校验（VAL-001~010，修复原实现漏调校验器的断层）：
+        //     ERROR 阻断出码并写入报告，WARNING 仅记录
+        StaticModelValidator.ValidationSummary validation =
+                new StaticModelValidator().validate(ir);
+        for (StaticModelValidator.ValidationIssue issue : validation.issues()) {
+            String line = "[" + issue.ruleId() + "] " + issue.elementName() + "（" + issue.elementId() + "）: "
+                    + issue.message();
+            if (issue.severity() == StaticModelValidator.Severity.ERROR) {
+                problems.add(line);
+            } else {
+                warnings.add(line);
+            }
+        }
+        if (!validation.passedWithoutErrors()) {
+            throw new IllegalArgumentException(
+                    "MODEL_VALIDATION_FAILED: 静态校验存在 " + problems.size() + " 条 ERROR（见 problems 明细），已阻断出码");
+        }
         // 2. 出码
         GeneratedModuleBundle bundle = new GromaModuleSourceGeneratorFacade().generateModule(ir, Map.of());
         String modelCode = runtimeCodeOf(bundle);

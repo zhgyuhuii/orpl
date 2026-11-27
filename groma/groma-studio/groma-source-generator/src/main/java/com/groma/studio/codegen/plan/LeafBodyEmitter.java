@@ -72,8 +72,37 @@ final class LeafBodyEmitter {
         if (translated.extractedPythonScriptName() != null) {
             outcome.scripts.add(new String[] {translated.extractedPythonScriptName(), translated.extractedPythonContent()});
             outcome.body.addStatement("// 画布过程代码框内的异构脚本已剥离为受控资源文件 scripts/$L", translated.extractedPythonScriptName());
-            outcome.body.addStatement("world().invokeExternalScript($S, $S)", translated.extractedPythonScriptName(),
-                    proc.def().entityId());
+            // Python 双向数据桥（修复"只调空壳、丢弃入参与返回值"断层）：
+            // IN/IN_OUT 标量形参打包为 inputs → invokeExternalScriptWithIo 受控执行 → 按中文形参名回写 OUT/IN_OUT
+            outcome.body.addStatement("$T scriptInput = new $T<>()",
+                    java.util.Map.class, java.util.LinkedHashMap.class);
+            for (ParamSlot param : proc.params()) {
+                if (param.reads() && !param.isRef()) {
+                    outcome.body.addStatement("scriptInput.put($S, this.$L)", param.zhName(), param.field());
+                }
+            }
+            outcome.body.addStatement("$T scriptOutput = world().invokeExternalScriptWithIo($S, $S, scriptInput)",
+                    java.util.Map.class, translated.extractedPythonScriptName(), proc.def().entityId());
+            int writeSeq = 0;
+            for (ParamSlot param : proc.params()) {
+                if (!param.writes() || param.isRef()) {
+                    continue;
+                }
+                String var = "scriptValue" + (writeSeq++);
+                outcome.body.addStatement("$T $L = scriptOutput.get($S)", Object.class, var, param.zhName());
+                if (param.type() == TypeName.BOOLEAN) {
+                    outcome.body.addStatement("this.$L($T.TRUE.equals($L))", param.setter(), Boolean.class, var);
+                } else if (PlanModel.STRING_TYPE.equals(param.type())) {
+                    outcome.body.beginControlFlow("if ($L != null)", var);
+                    outcome.body.addStatement("this.$L($T.valueOf($L))", param.setter(), String.class, var);
+                    outcome.body.endControlFlow();
+                } else {
+                    // 数值形参：脚本 JSON 输出统一转 double 回写
+                    outcome.body.beginControlFlow("if ($L instanceof $T num$L)", var, Number.class, var);
+                    outcome.body.addStatement("this.$L(num$L.doubleValue())", param.setter(), var);
+                    outcome.body.endControlFlow();
+                }
+            }
             return outcome;
         }
         String code = translated.javaMethodBody().toString();

@@ -28,6 +28,7 @@ com/groma/studio/ir/CompilePlanIR$ConditionRuleIR.class
 com/groma/studio/ir/CompilePlanIR$ParamIR.class
 com/groma/studio/parser/AbModelMergerAndParser$Worker$NodeRaw.class
 com/groma/studio/ir/CompilePlanIR$ValueSpec.class
+com/groma/studio/ir/CompilePlanIR$ExceptionFlowIR.class
 com/groma/studio/ir/CompilePlanIR$ProcessDefIR.class
 com/groma/studio/ir/CompilePlanIR$LocalVarIR.class
 com/groma/studio/ir/GromaModuleIR$NodeCellIR.class
@@ -35,8 +36,10 @@ com/groma/studio/parser/AbModelMergerAndParser.class
 com/groma/studio/ir/CompilePlanIR$MemberIR.class
 com/groma/studio/ir/CompilePlanIR$NamedInstanceIR.class
 com/groma/studio/parser/AbModelMergerAndParser$Worker.class
+com/groma/studio/parser/AbModelMergerAndParser$Worker$GuardBundle.class
 com/groma/studio/ir/CompilePlanIR$ConditionIR.class
 com/groma/studio/ir/CompilePlanIR$DefaultStartIR.class
+com/groma/studio/ir/CompilePlanIR$ProxyDefIR.class
 com/groma/studio/ir/GromaModuleIR$ConstantIR.class
 com/groma/studio/ir/CompilePlanIR$LocalIR.class
 com/groma/studio/ir/CompilePlanIR$ConstIR.class

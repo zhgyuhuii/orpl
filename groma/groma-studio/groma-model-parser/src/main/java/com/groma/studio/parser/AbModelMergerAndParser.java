@@ -5,6 +5,9 @@ import com.groma.studio.ir.CompilePlanIR.ArgBindingIR;
 import com.groma.studio.ir.CompilePlanIR.AssocTypeIR;
 import com.groma.studio.ir.CompilePlanIR.BuiltinIR;
 import com.groma.studio.ir.CompilePlanIR.ConditionIR;
+import com.groma.studio.ir.CompilePlanIR.ConditionRuleIR;
+import com.groma.studio.ir.CompilePlanIR.ExceptionFlowIR;
+import com.groma.studio.ir.CompilePlanIR.ProxyDefIR;
 import com.groma.studio.ir.CompilePlanIR.ConstIR;
 import com.groma.studio.ir.CompilePlanIR.DefaultStartIR;
 import com.groma.studio.ir.CompilePlanIR.InstanceIR;
@@ -609,6 +612,10 @@ public final class AbModelMergerAndParser {
                 def.params.put(port.entityId(), port);
             }
             parseFlowNodes(def, design, params);
+            GuardBundle guards = parseGuardsAndExceptions(def, repId, entityIds, define, design);
+            List<ConditionRuleIR> starts = guards.starts();
+            List<ConditionRuleIR> maintains = guards.maintains();
+            List<ExceptionFlowIR> exceptions = guards.exceptions();
 
             String durationType = text(rep, "timeParamType");
             if (durationType.isEmpty()) {
@@ -626,7 +633,124 @@ public final class AbModelMergerAndParser {
                     nullableDouble(rep, "distributionParam"), accuracyMillis(rep),
                     text(rep, "javaCode"), text(rep, "designViewId"),
                     List.copyOf(params), List.copyOf(def.localVars), List.copyOf(def.nodes), List.copyOf(def.entries),
-                    List.of(), List.of());
+                    List.copyOf(starts), List.copyOf(maintains), List.copyOf(exceptions));
+        }
+
+        /**
+         * 收割补丁 C + R25/R26：解析过程定义视图与设计视图上的
+         * R22 启动条件（condition）、R21 维持条件（agent）、R13/R15 源状态前置（in-change / in-out），
+         * 以及 R25 超时（overtime-exception → pcd）/ R26 提前完成（undertime-exception → pca）异常边。
+         * in-out 按说明书拆解语义：源状态作为启动前置（R13），目标状态记入规则描述（R14 后置由节点 PostIR 承载）。
+         */
+        private record GuardBundle(
+                List<ConditionRuleIR> starts,
+                List<ConditionRuleIR> maintains,
+                List<ExceptionFlowIR> exceptions
+        ) {}
+
+        private GuardBundle parseGuardsAndExceptions(DefCtx def, String repId, List<String> entityIds,
+                                                     ViewCtx define, ViewCtx design) {
+            List<ConditionRuleIR> starts = new ArrayList<>();
+            List<ConditionRuleIR> maintains = new ArrayList<>();
+            List<ExceptionFlowIR> exceptions = new ArrayList<>();
+            Map<String, Integer> pcByCell = new HashMap<>();
+            for (NodeIR node : def.nodes) {
+                pcByCell.put(node.cellId(), node.pc());
+            }
+            List<ViewCtx> guardViews = new ArrayList<>();
+            if (define != null) {
+                guardViews.add(define);
+            }
+            if (design != null) {
+                guardViews.add(design);
+            }
+            for (ViewCtx v : guardViews) {
+                for (JsonNode edge : v.cells) {
+                    if (!"LINK".equals(text(edge, "type"))) {
+                        continue;
+                    }
+                    String lt = linkType(edge);
+                    boolean cond = "condition".equals(lt);
+                    boolean agent = "agent".equals(lt);
+                    boolean inChange = "in-change".equals(lt) || "in-out".equals(lt);
+                    boolean overtime = "overtime-exception".equals(lt);
+                    boolean undertime = "undertime-exception".equals(lt);
+                    if (!cond && !agent && !inChange && !overtime && !undertime) {
+                        continue;
+                    }
+                    JsonNode target = v.target(edge);
+                    JsonNode source = v.source(edge);
+                    if (target == null || source == null) {
+                        continue;
+                    }
+                    String targetData = text(target, "data");
+                    boolean targetsThisProcess = repId.equals(targetData) || entityIds.contains(targetData)
+                            || pcByCell.containsKey(text(target, "id"));
+                    if (!targetsThisProcess) {
+                        continue;
+                    }
+                    if (overtime || undertime) {
+                        Integer pc = pcByCell.get(text(target, "id"));
+                        exceptions.add(new ExceptionFlowIR(overtime ? "OVERTIME_PCD" : "UNDERTIME_PCA",
+                                pc == null ? -1 : pc, ""));
+                        continue;
+                    }
+                    JsonNode linkEntity = entities.get(text(edge, "data"));
+                    String stateLabel = "";
+                    OperandIR op;
+                    if ("STATE".equals(text(source, "type"))) {
+                        JsonNode stateEntity = entities.get(text(source, "data"));
+                        stateLabel = stateEntity == null ? text(source, "label") : text(stateEntity, "label");
+                        String enumId = enumOfState.getOrDefault(text(source, "data"), "");
+                        op = enumId.isEmpty() ? operandOf(def, v, source) : enumMemberOperand(def, v, enumId);
+                    } else {
+                        op = operandOf(def, v, source, edge);
+                    }
+                    if (op == null) {
+                        continue;
+                    }
+                    String describe = lt + ":" + text(source, "label");
+                    ConditionRuleIR rule = new ConditionRuleIR(
+                            op, stateLabel, conditionsOf(linkEntity), describe, expressionOf(linkEntity));
+                    if (agent) {
+                        maintains.add(rule);
+                        starts.add(rule);
+                    } else {
+                        starts.add(rule);
+                    }
+                }
+            }
+            return new GuardBundle(starts, maintains, exceptions);
+        }
+
+        /** 连线概率（rate/percentage 兼容：>1 视为百分数） */
+        private double probabilityOf(JsonNode edge, JsonNode linkEntity) {
+            Double p = nullableDouble(edge, "probability");
+            if (p == null && linkEntity != null) {
+                p = nullableDouble(linkEntity, "probability");
+            }
+            if (p == null && linkEntity != null) {
+                p = nullableDouble(linkEntity, "rate");
+            }
+            if (p == null) {
+                return 1.0D;
+            }
+            return p > 1.0001D ? p / 100.0D : Math.max(0.0D, p);
+        }
+
+        /** 互斥概率组（标准 10.4）：probabilityGroup / groupCode / mutexGroup 字段兼容 */
+        private String probabilityGroupOf(JsonNode edge, JsonNode linkEntity) {
+            String g = text(edge, "probabilityGroup");
+            if (g.isEmpty() && linkEntity != null) {
+                g = text(linkEntity, "probabilityGroup");
+            }
+            if (g.isEmpty() && linkEntity != null) {
+                g = text(linkEntity, "groupCode");
+            }
+            if (g.isEmpty() && linkEntity != null) {
+                g = text(linkEntity, "mutexGroup");
+            }
+            return g;
         }
 
         /** 定义视图 → 形参契约 */
@@ -734,6 +858,7 @@ public final class AbModelMergerAndParser {
             boolean calleeTimeConsuming;
             boolean slow;
             boolean firstStart;
+            boolean lastEnd;
             OperandIR host;
             final List<ArgBindingIR> inputs = new ArrayList<>();
             final List<ArgBindingIR> writes = new ArrayList<>();
@@ -880,7 +1005,8 @@ public final class AbModelMergerAndParser {
                     }
                     NextIR next = new NextIR(
                             targetPc, conditional, conditional ? portName(portArgs(portOfId(raw.cell, sourcePort))) : "",
-                            conditionsOf(linkEntity), expressionOf(linkEntity), text(edge, "event"), delayTicks);
+                            conditionsOf(linkEntity), expressionOf(linkEntity), text(edge, "event"), delayTicks,
+                            probabilityOf(edge, linkEntity), probabilityGroupOf(edge, linkEntity));
                     // 去重：同一条连线只登记一次
                     if (!nexts.contains(next)) {
                         nexts.add(next);
@@ -891,7 +1017,7 @@ public final class AbModelMergerAndParser {
                 NodeIR node = new NodeIR(
                         pcOf.get(raw.cellId), raw.cellId, text(raw.entity, "id"), text(raw.entity, "label"),
                         raw.tool ? "TOOL" : "CALL", raw.toolKey, raw.calleeDefKey, raw.calleeTimeConsuming, raw.slow,
-                        raw.firstStart, raw.host == null ? null : resolve.apply(raw.host),
+                        raw.firstStart, raw.lastEnd, raw.host == null ? null : resolve.apply(raw.host),
                         retarget(raw.inputs, resolve), retarget(raw.writes, resolve), raw.resultJavaType,
                         List.copyOf(nexts), retargetPosts(raw.postActions, resolve),
                         doubleOf(raw.cell, "x", 0.0D), doubleOf(raw.cell, "y", 0.0D));
@@ -1085,6 +1211,7 @@ public final class AbModelMergerAndParser {
                 raw.slow = isTimeRelated(cell);
             }
             raw.firstStart = flag(cell, "firstStart");
+            raw.lastEnd = flag(cell, "lastEnd");
 
             // 组成线：CALL 节点的宿主对象 / 集合类工具操作的集合
             for (JsonNode edge : view.incoming(raw.cellId)) {
@@ -1167,6 +1294,7 @@ public final class AbModelMergerAndParser {
             }
             sortByTargetPosition(view, postEdges);
             for (JsonNode edge : postEdges) {
+                JsonNode linkEntity = entities.get(text(edge, "data"));
                 JsonNode target = view.target(edge);
                 if (target == null || isProcessCell(target)) {
                     continue;
@@ -1180,11 +1308,14 @@ public final class AbModelMergerAndParser {
                         def.warn("输出转换找不到枚举类型 " + memberLabel(enumId) + " 的成员，已忽略");
                         continue;
                     }
-                    posts.add(new PostIR("OUT_CHANGE", member, text(stateEntity, "label"), enumId, null));
+                    posts.add(new PostIR("OUT_CHANGE", member, text(stateEntity, "label"), enumId, null,
+                            probabilityOf(edge, linkEntity), probabilityGroupOf(edge, linkEntity)));
                 } else if ("result".equals(linkType)) {
-                    posts.add(new PostIR("RESULT", operandOf(def, view, target), "", "", null));
+                    posts.add(new PostIR("RESULT", operandOf(def, view, target), "", "", null,
+                            probabilityOf(edge, linkEntity), probabilityGroupOf(edge, linkEntity)));
                 } else {
-                    posts.add(new PostIR("CONSUME", operandOf(def, view, target), "", "", null));
+                    posts.add(new PostIR("CONSUME", operandOf(def, view, target), "", "", null,
+                            probabilityOf(edge, linkEntity), probabilityGroupOf(edge, linkEntity)));
                 }
             }
             return posts;
@@ -1492,7 +1623,8 @@ public final class AbModelMergerAndParser {
             List<PostIR> out = new ArrayList<>(posts.size());
             for (PostIR post : posts) {
                 out.add(new PostIR(post.kind(), post.target() == null ? null : resolve.apply(post.target()),
-                        post.stateLabel(), post.enumTypeId(), post.value() == null ? null : resolve.apply(post.value())));
+                        post.stateLabel(), post.enumTypeId(), post.value() == null ? null : resolve.apply(post.value()),
+                        post.probability(), post.probabilityGroup()));
             }
             return out;
         }
@@ -1917,11 +2049,107 @@ public final class AbModelMergerAndParser {
                 for (String memberId : typeMembers.getOrDefault(typeId, List.of())) {
                     members.add(memberIR(memberId));
                 }
-                String parent = text(entity, "inheritEntityId");
+                List<String> parentIds = resolveParentIds(typeId, entity);
+                String parent = parentIds.isEmpty() ? "" : parentIds.get(0);
+                List<String> mixins = parentIds.size() > 1 ? parentIds.subList(1, parentIds.size()) : List.of();
                 types.add(new TypeDefIR(typeId, text(entity, "label"), text(entity, "description"),
-                        text(entity, "essence"), typeKind.get(typeId), parent, List.copyOf(members)));
+                        text(entity, "essence"), typeKind.get(typeId), parent,
+                        List.copyOf(mixins), List.copyOf(parseProxies(typeId)), List.copyOf(members), List.of()));
             }
             return types;
+        }
+
+        /**
+         * 收割补丁 A（R01 多继承）：inheritEntityId 单值 + inherits 数组 + 定义/设计视图的
+         * PARENT 图元与 edge-extend 连线一并收集（模型 2 智能筹划含 5 组画布继承）。
+         * 返回有序去重父类 id 列表：首为主父类，其余为副父类（mixin）。
+         */
+        private List<String> resolveParentIds(String typeId, JsonNode typeEntity) {
+            java.util.LinkedHashSet<String> parents = new java.util.LinkedHashSet<>();
+            String direct = text(typeEntity, "inheritEntityId");
+            if (!direct.isEmpty() && entities.containsKey(direct) && !direct.equals(typeId)) {
+                parents.add(direct);
+            }
+            JsonNode inherits = field(typeEntity, "inherits");
+            if (inherits != null && inherits.isArray()) {
+                for (JsonNode item : inherits) {
+                    String pid = item.isObject() ? text(item, "id") : item.asText().trim();
+                    if (!pid.isEmpty() && entities.containsKey(pid) && !pid.equals(typeId)) {
+                        parents.add(pid);
+                    }
+                }
+            }
+            for (String viewId : List.of(text(typeEntity, "defineViewId"), text(typeEntity, "designViewId"))) {
+                ViewCtx v = view(viewId);
+                if (v == null) {
+                    continue;
+                }
+                for (JsonNode edge : v.cells) {
+                    if (!"LINK".equals(text(edge, "type")) || !"extend".equals(linkType(edge))) {
+                        continue;
+                    }
+                    JsonNode src = v.source(edge);
+                    JsonNode dst = v.target(edge);
+                    if (src == null || dst == null) {
+                        continue;
+                    }
+                    // 方圆画布约定：子类型 --edge-extend--> 父类型（PARENT 或 TYPE 图元）
+                    String childData = text(src, "data");
+                    String parentData = text(dst, "data");
+                    String resolvedPid = childData.equals(typeId) ? parentData
+                            : (parentData.equals(typeId) ? childData : "");
+                    JsonNode parentEntity = entities.get(resolvedPid);
+                    if (parentEntity != null && !"TYPE".equals(text(parentEntity, "type"))) {
+                        String viaRef = refTypeIdOf(parentEntity);
+                        resolvedPid = viaRef.isEmpty() ? findByLabel(text(parentEntity, "label"), false) : viaRef;
+                    }
+                    if (!resolvedPid.isEmpty() && domainTypeIds.contains(resolvedPid) && !resolvedPid.equals(typeId)) {
+                        parents.add(resolvedPid);
+                    }
+                }
+            }
+            return List.copyOf(parents);
+        }
+
+        /**
+         * 收割补丁 B（R05 集合成员代理）：定义/设计视图的 PROXY 图元 + 入向 edge-proxy 连线
+         * → ProxyDefIR（模型 2 智能筹划含 1 组）。解析信息进 IR，出码消费（ObservableEntityList 包装）
+         * 见 docs/dual_model_codegen_audit.md 方案 C。
+         */
+        private List<ProxyDefIR> parseProxies(String typeId) {
+            List<ProxyDefIR> out = new ArrayList<>();
+            for (String viewId : List.of(text(entities.get(typeId), "defineViewId"),
+                    text(entities.get(typeId), "designViewId"))) {
+                ViewCtx v = view(viewId);
+                if (v == null) {
+                    continue;
+                }
+                for (JsonNode cell : v.cells) {
+                    if (!"PROXY".equals(text(cell, "type"))) {
+                        continue;
+                    }
+                    String proxyEid = text(cell, "data");
+                    JsonNode proxyEntity = entities.get(proxyEid);
+                    String label = proxyEntity == null ? text(cell, "label") : text(proxyEntity, "label");
+                    for (JsonNode edge : v.incoming(text(cell, "id"))) {
+                        if (!"proxy".equals(linkType(edge))) {
+                            continue;
+                        }
+                        JsonNode collCell = v.source(edge);
+                        if (collCell == null) {
+                            continue;
+                        }
+                        String collMemberId = text(collCell, "data");
+                        String elemType = GromaTypes.entityIdOf(GromaTypes.elementTypeOf(slotType(collMemberId)));
+                        out.add(new ProxyDefIR(
+                                proxyEid.isEmpty() ? text(cell, "id") : proxyEid,
+                                label,
+                                collMemberId,
+                                elemType == null ? "" : elemType));
+                    }
+                }
+            }
+            return out;
         }
 
         private List<InstanceIR> buildInstances() {

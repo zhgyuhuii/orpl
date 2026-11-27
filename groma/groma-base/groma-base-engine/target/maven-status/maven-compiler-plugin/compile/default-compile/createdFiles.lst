@@ -12,6 +12,7 @@ com/groma/base/engine/GromaModuleRuntime.class
 com/groma/base/engine/TickEventLoopGroup.class
 com/groma/base/engine/GromaProcessStarter.class
 com/groma/base/engine/archive/SimulationArchiveBundle$RelationLinkArchivePart.class
+com/groma/base/engine/GromaWorldContext$ExternalScriptIoExecutor.class
 com/groma/base/engine/GromaMemberMeta.class
 com/groma/base/engine/FixedRingTelemetryBuffer.class
 com/groma/base/engine/GromaOperatorFlow.class

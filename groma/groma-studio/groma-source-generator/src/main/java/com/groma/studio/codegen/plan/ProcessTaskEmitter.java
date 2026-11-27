@@ -179,13 +179,13 @@ public final class ProcessTaskEmitter {
             tb.addMethod(MethodSpec.methodBuilder("nodeDone").addAnnotation(Override.class)
                     .addModifiers(Modifier.PROTECTED).addParameter(int.class, "pc")
                     .addStatement("if (pc == $L) return", proc.entries().length == 0 ? -1 : proc.entries()[0]).build());
-            tb.addMethod(emitCanStart(proc));
+            tb.addMethod(emitCanStart(model, proc));
             JavaFile bo = emitRuntimeBo(model, proc);
             JavaFile task = JavaFile.builder(proc.taskCn().packageName(), addCommonTail(model, proc, tb, scope, false).build())
                     .indent("    ").build();
             return new Result(task, bo, leaf.scripts);
         }
-        tb.addMethod(emitCanStart(proc));
+        tb.addMethod(emitCanStart(model, proc));
         JavaFile bo = emitRuntimeBo(model, proc);
         JavaFile task = JavaFile.builder(proc.taskCn().packageName(), addCommonTail(model, proc, tb, scope, true).build())
                 .indent("    ").build();
@@ -204,8 +204,8 @@ public final class ProcessTaskEmitter {
         return sb.toString();
     }
 
-    /** 启动条件与非空输入守卫 */
-    private MethodSpec emitCanStart(ProcInfo proc) {
+    /** 启动条件与非空输入守卫（收割：R22 启动条件 / R13/R15 源状态前置 / R21 初始维持条件接入 canStart） */
+    private MethodSpec emitCanStart(PlanModel model, ProcInfo proc) {
         MethodSpec.Builder mb = MethodSpec.methodBuilder("canStart").addAnnotation(Override.class)
                 .addModifiers(Modifier.PROTECTED).returns(TypeName.BOOLEAN);
         boolean any = false;
@@ -213,6 +213,48 @@ public final class ProcessTaskEmitter {
             if (param.nonnull() && param.reads() && !PlanModel.KIND_BASE.equals(param.kind())) {
                 mb.addStatement("if (this.$L == null) return false", param.field());
                 any = true;
+            }
+        }
+        // 画布启动/维持/源状态前置条件：状态前置走 enumZhLabel 中文比对（与事件接线表同一语义），
+        // 数值/布尔比较内联字面量；复合逻辑表达式暂不支持内联，记注释降级（不误杀启动）。
+        List<CompilePlanIR.ConditionRuleIR> starts = proc.def().startConditions();
+        if (starts != null && !starts.isEmpty()) {
+            TaskScope condScope = new TaskScope(model, proc);
+            for (CompilePlanIR.ConditionRuleIR rule : starts) {
+                OperandRenderer.Value value;
+                try {
+                    value = condScope.render(rule.operand());
+                } catch (RuntimeException ex) {
+                    mb.addStatement("// 启动条件[$L]的操作数无法解析，已跳过: $L", rule.describe(), String.valueOf(ex.getMessage()));
+                    continue;
+                }
+                boolean generated = false;
+                if (rule.stateLabel() != null && !rule.stateLabel().isBlank()) {
+                    mb.beginControlFlow("if (!\"$L\".equals($T.enumZhLabel((Enum<?>) ($L))))",
+                            rule.stateLabel(), PlanModel.BASE_ENTITY, value.code());
+                    mb.addStatement("return false");
+                    mb.endControlFlow();
+                    generated = true;
+                }
+                for (CompilePlanIR.ConditionIR c : rule.conditions() == null ? java.util.List.<CompilePlanIR.ConditionIR>of() : rule.conditions()) {
+                    String op = switch (c.op() == null ? "" : c.op()) {
+                        case "=" -> "==";
+                        default -> c.op();
+                    };
+                    String literal = switch (c.literalType() == null ? "number" : c.literalType()) {
+                        case "string" -> "\"" + c.literal() + "\"";
+                        case "null" -> "null";
+                        default -> c.literal();
+                    };
+                    mb.beginControlFlow("if (!($L " + op + " " + literal + "))", value.code());
+                    mb.addStatement("return false");
+                    mb.endControlFlow();
+                    generated = true;
+                }
+                if (!generated && rule.expression() != null && !rule.expression().isBlank()) {
+                    mb.addStatement("// 复合启动条件[$L]待表达式求值器接入: $L", rule.describe(),
+                            String.valueOf(rule.expression()));
+                }
             }
         }
         mb.addStatement("return true");

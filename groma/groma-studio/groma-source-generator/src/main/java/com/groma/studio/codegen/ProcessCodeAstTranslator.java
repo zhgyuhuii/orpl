@@ -52,15 +52,14 @@ public final class ProcessCodeAstTranslator {
             return new TranslationResult(CodeBlock.builder().build(), null, null, null);
         }
 
-        // 1. 嗅探是否为非 Java 的 Python 建模脚本（如 scene-a.json 中的航路规划算法）
+        // 1. 嗅探是否为非 Java 的 Python 建模脚本（如 scene-a.json 中的航路规划算法）。
+        //    方法体交由 LeafBodyEmitter 生成双向数据桥（IN/IN_OUT 打包 → invokeExternalScriptWithIo → OUT 回写），
+        //    这里只负责剥离脚本内容与产出告警，不再生成调用语句（历史版本曾生成不存在的
+        //    ctx.invokeSandboxedPythonScript 调用，属死代码已移除）。
         if (PYTHON_FINGERPRINT.matcher(rawCode).find()) {
             String scriptFileName = processCodeSlug + "_" + processEntityId.substring(0, Math.min(8, processEntityId.length())) + ".py";
-            CodeBlock fallbackCall = CodeBlock.builder()
-                    .addStatement("// [VAL-CODE-002] 检测到原始模型内嵌 Python 脚本，已自动剥离至 resources/scripts/$L", scriptFileName)
-                    .addStatement("ctx.invokeSandboxedPythonScript($S, $S)", processEntityId, scriptFileName)
-                    .build();
             return new TranslationResult(
-                    fallbackCall,
+                    CodeBlock.builder().build(),
                     scriptFileName,
                     rawCode,
                     "WARN [VAL-CODE-002] 过程 [" + processEntityId + "] 包含 Python 脚本，已转为受控外部脚本连接器调用"

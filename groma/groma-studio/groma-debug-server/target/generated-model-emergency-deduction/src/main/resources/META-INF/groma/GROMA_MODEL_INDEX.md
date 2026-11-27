@@ -11,46 +11,46 @@
 
 | 场景中文原名 | 场景编码 | 控制器路由 | 沙盒上下文类 |
 |---|---|---|---|
-| 场景2 | `scene2 | `/api/v1/models/emergency-deduction/scenes/scene2` | `Scene2WorldContext` |
-| 场景1 | `scene1 | `/api/v1/models/emergency-deduction/scenes/scene1` | `Scene1WorldContext` |
+| 场景2 | `scene2` | `/api/v1/models/emergency-deduction/scenes/scene2` | `Scene2WorldContext` |
+| 场景1 | `scene1` | `/api/v1/models/emergency-deduction/scenes/scene1` | `Scene1WorldContext` |
 
 ## 2. 领域对象与五层符号对照总表
 
 | 中文原名 | 类型编码 | Entity 类 | 只读契约 | VO 类 | Service | 成员数 |
 |---|---|---|---|---|---|---|
 | 乘客群（TYPE） | `PassengerGroup` | `PassengerGroupEntity` | `PassengerGroupReadOnly` | `PassengerGroupVO` | `IPassengerGroupService` | 7 |
-| 地理路线（TYPE） | `GeoRoute` | `GeoRouteEntity` | `GeoRouteReadOnly` | `GeoRouteVO` | `IGeoRouteService` | 1 |
+| 地理路线（TYPE） | `GeoRoute` | `GeoRouteEntity` | `GeoRouteReadOnly` | `GeoRouteVO` | — | 1 |
 | 文件类型（TYPE） | `FileType` | `FileTypeEntity` | `FileTypeReadOnly` | `FileTypeVO` | `IFileTypeService` | 7 |
-| 地理区域（TYPE） | `GeoRegion` | `GeoRegionEntity` | `GeoRegionReadOnly` | `GeoRegionVO` | `IGeoRegionService` | 1 |
+| 地理区域（TYPE） | `GeoRegion` | `GeoRegionEntity` | `GeoRegionReadOnly` | `GeoRegionVO` | — | 1 |
 | 地铁区间（TYPE） | `MetroSection` | `MetroSectionEntity` | `MetroSectionReadOnly` | `MetroSectionVO` | `IMetroSectionService` | 11 |
-| 区间与区间内列车（TYPE） | `SectionWithTrain` | `SectionWithTrainEntity` | `SectionWithTrainReadOnly` | `SectionWithTrainVO` | `ISectionWithTrainService` | 6 |
-| 处置方案（TYPE） | `DisposalPlan` | `DisposalPlanEntity` | `DisposalPlanReadOnly` | `DisposalPlanVO` | `IDisposalPlanService` | 6 |
-| 区域与区域内车站（TYPE） | `AreaWithStation` | `AreaWithStationEntity` | `AreaWithStationReadOnly` | `AreaWithStationVO` | `IAreaWithStationService` | 4 |
+| 区间与区间内列车（TYPE） | `SectionWithTrain` | `SectionWithTrainEntity` | `SectionWithTrainReadOnly` | `SectionWithTrainVO` | — | 6 |
+| 处置方案（TYPE） | `DisposalPlan` | `DisposalPlanEntity` | `DisposalPlanReadOnly` | `DisposalPlanVO` | — | 6 |
+| 区域与区域内车站（TYPE） | `AreaWithStation` | `AreaWithStationEntity` | `AreaWithStationReadOnly` | `AreaWithStationVO` | — | 4 |
 | 文件服务（TYPE） | `FileService` | `FileServiceEntity` | `FileServiceReadOnly` | `FileServiceVO` | `IFileServiceService` | 0 |
 | 降雨（TYPE） | `Rainfall` | `RainfallEntity` | `RainfallReadOnly` | `RainfallVO` | `IRainfallService` | 0 |
-| 线路与区间（TYPE） | `LineWithSection` | `LineWithSectionEntity` | `LineWithSectionReadOnly` | `LineWithSectionVO` | `ILineWithSectionService` | 4 |
+| 线路与区间（TYPE） | `LineWithSection` | `LineWithSectionEntity` | `LineWithSectionReadOnly` | `LineWithSectionVO` | — | 4 |
 | 线路与列车（TYPE） | `LineWithTrain` | `LineWithTrainEntity` | `LineWithTrainReadOnly` | `LineWithTrainVO` | `ILineWithTrainService` | 7 |
-| 车站与站内乘客群（TYPE） | `StationWithPassengerGroup` | `StationWithPassengerGroupEntity` | `StationWithPassengerGroupReadOnly` | `StationWithPassengerGroupVO` | `IStationWithPassengerGroupService` | 6 |
-| 车站与停靠列车（TYPE） | `StationWithParkedTrain` | `StationWithParkedTrainEntity` | `StationWithParkedTrainReadOnly` | `StationWithParkedTrainVO` | `IStationWithParkedTrainService` | 6 |
-| 地铁线路（TYPE） | `MetroLine` | `MetroLineEntity` | `MetroLineReadOnly` | `MetroLineVO` | `IMetroLineService` | 3 |
-| 降雨与受影响区域（TYPE） | `RainfallAffectedArea` | `RainfallAffectedAreaEntity` | `RainfallAffectedAreaReadOnly` | `RainfallAffectedAreaVO` | `IRainfallAffectedAreaService` | 7 |
+| 车站与站内乘客群（TYPE） | `StationWithPassengerGroup` | `StationWithPassengerGroupEntity` | `StationWithPassengerGroupReadOnly` | `StationWithPassengerGroupVO` | — | 6 |
+| 车站与停靠列车（TYPE） | `StationWithParkedTrain` | `StationWithParkedTrainEntity` | `StationWithParkedTrainReadOnly` | `StationWithParkedTrainVO` | — | 6 |
+| 地铁线路（TYPE） | `MetroLine` | `MetroLineEntity` | `MetroLineReadOnly` | `MetroLineVO` | — | 3 |
+| 降雨与受影响区域（TYPE） | `RainfallAffectedArea` | `RainfallAffectedAreaEntity` | `RainfallAffectedAreaReadOnly` | `RainfallAffectedAreaVO` | — | 7 |
 | 方案执行器（TYPE） | `PlanExecutor` | `PlanExecutorEntity` | `PlanExecutorReadOnly` | `PlanExecutorVO` | `IPlanExecutorService` | 4 |
-| 线路与车站（TYPE） | `LineWithStation` | `LineWithStationEntity` | `LineWithStationReadOnly` | `LineWithStationVO` | `ILineWithStationService` | 5 |
-| 地理点位（TYPE） | `GeoPoint` | `GeoPointEntity` | `GeoPointReadOnly` | `GeoPointVO` | `IGeoPointService` | 3 |
+| 线路与车站（TYPE） | `LineWithStation` | `LineWithStationEntity` | `LineWithStationReadOnly` | `LineWithStationVO` | — | 5 |
+| 地理点位（TYPE） | `GeoPoint` | `GeoPointEntity` | `GeoPointReadOnly` | `GeoPointVO` | — | 3 |
 | 区域（TYPE） | `Area` | `AreaEntity` | `AreaReadOnly` | `AreaVO` | `IAreaService` | 10 |
-| 文件信息（TYPE） | `FileInfo` | `FileInfoEntity` | `FileInfoReadOnly` | `FileInfoVO` | `IFileInfoService` | 6 |
-| 列车与车内乘客群（TYPE） | `TrainWithPassengerGroup` | `TrainWithPassengerGroupEntity` | `TrainWithPassengerGroupReadOnly` | `TrainWithPassengerGroupVO` | `ITrainWithPassengerGroupService` | 3 |
+| 文件信息（TYPE） | `FileInfo` | `FileInfoEntity` | `FileInfoReadOnly` | `FileInfoVO` | — | 6 |
+| 列车与车内乘客群（TYPE） | `TrainWithPassengerGroup` | `TrainWithPassengerGroupEntity` | `TrainWithPassengerGroupReadOnly` | `TrainWithPassengerGroupVO` | — | 3 |
 | 方案生成器（TYPE） | `PlanGenerator` | `PlanGeneratorEntity` | `PlanGeneratorReadOnly` | `PlanGeneratorVO` | `IPlanGeneratorService` | 6 |
 | 车站（TYPE） | `Station` | `StationEntity` | `StationReadOnly` | `StationVO` | `IStationService` | 18 |
 | 列车（TYPE） | `Train` | `TrainEntity` | `TrainReadOnly` | `TrainVO` | `ITrainService` | 8 |
-| 区间与端点车站（TYPE） | `SectionWithEndStation` | `SectionWithEndStationEntity` | `SectionWithEndStationReadOnly` | `SectionWithEndStationVO` | `ISectionWithEndStationService` | 7 |
-| 场景2（SCENE） | `Scene2` | `Scene2Entity` | `Scene2ReadOnly` | `Scene2VO` | `IScene2Service` | 4 |
+| 区间与端点车站（TYPE） | `SectionWithEndStation` | `SectionWithEndStationEntity` | `SectionWithEndStationReadOnly` | `SectionWithEndStationVO` | — | 7 |
+| 场景2（SCENE） | `Scene2` | `Scene2Entity` | `Scene2ReadOnly` | `Scene2VO` | — | 4 |
 | 场景1（SCENE） | `Scene1` | `Scene1Entity` | `Scene1ReadOnly` | `Scene1VO` | `IScene1Service` | 3 |
-| 列车通行（ASSOCIATION） | `TrainPassing` | `TrainPassingEntity` | `TrainPassingReadOnly` | `TrainPassingVO` | `ITrainPassingService` | 2 |
-| 地下进水（ASSOCIATION） | `UndergroundInflow` | `UndergroundInflowEntity` | `UndergroundInflowReadOnly` | `UndergroundInflowVO` | `IUndergroundInflowService` | 2 |
-| 降雨汇水（ASSOCIATION） | `RainfallCatchment` | `RainfallCatchmentEntity` | `RainfallCatchmentReadOnly` | `RainfallCatchmentVO` | `IRainfallCatchmentService` | 2 |
-| 挡水防护（ASSOCIATION） | `FloodProtection` | `FloodProtectionEntity` | `FloodProtectionReadOnly` | `FloodProtectionVO` | `IFloodProtectionService` | 2 |
-| 停运控制（ASSOCIATION） | `SuspensionControl` | `SuspensionControlEntity` | `SuspensionControlReadOnly` | `SuspensionControlVO` | `ISuspensionControlService` | 2 |
+| 列车通行（ASSOCIATION） | `TrainPassing` | `TrainPassingEntity` | `TrainPassingReadOnly` | `TrainPassingVO` | — | 2 |
+| 地下进水（ASSOCIATION） | `UndergroundInflow` | `UndergroundInflowEntity` | `UndergroundInflowReadOnly` | `UndergroundInflowVO` | — | 2 |
+| 降雨汇水（ASSOCIATION） | `RainfallCatchment` | `RainfallCatchmentEntity` | `RainfallCatchmentReadOnly` | `RainfallCatchmentVO` | — | 2 |
+| 挡水防护（ASSOCIATION） | `FloodProtection` | `FloodProtectionEntity` | `FloodProtectionReadOnly` | `FloodProtectionVO` | — | 2 |
+| 停运控制（ASSOCIATION） | `SuspensionControl` | `SuspensionControlEntity` | `SuspensionControlReadOnly` | `SuspensionControlVO` | — | 2 |
 
 ### 2.1 成员对照（中文原名 → 英文成员 → 类型 / 单位 / 初始值）
 

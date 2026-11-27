@@ -50,11 +50,17 @@ public final class Scene1WorldContext extends GromaWorldContext {
     private Scene1Entity self;
 
     /**
-     * @param initialOverrides 启动参数（预留：按成员中文名覆盖初值）
+     * @param initialOverrides 启动参数：{@code 实例ID.成员名} 定点覆盖；{@code 成员名} 覆盖场景根对象成员（初始化静默期内应用，不产生值变化事件）
      */
     public Scene1WorldContext(GromaModuleRuntime runtime, String sessionId, long startEpochMs,
             long finalStepMs, long seed, Map<String, Object> initialOverrides) {
         super(runtime, sessionId, "scene1", startEpochMs, finalStepMs, seed);
+        setInitialOverrides(initialOverrides);
+    }
+
+    @Override
+    protected BaseSimEntity sceneRootEntity() {
+        return self;
     }
 
     @Override

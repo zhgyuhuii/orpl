@@ -47,7 +47,31 @@ import java.util.Map;
             String essence,
             String kind,
             String primaryParentId,
-            List<MemberIR> members
+            List<String> mixinParentIds,
+            List<ProxyDefIR> proxies,
+            List<MemberIR> members,
+            List<String> notes
+    ) {
+        public TypeDefIR(String entityId, String zhName, String description, String essence,
+                         String kind, String primaryParentId, List<MemberIR> members) {
+            this(entityId, zhName, description, essence, kind, primaryParentId,
+                    List.of(), List.of(), members, List.of());
+        }
+    }
+
+    /** R05 集合成员代理定义（模型 2 智能筹划含 1 组）：集合 collectionMemberId 的元素事件代理转发至下游 */
+    public record ProxyDefIR(
+            String proxyEntityId,
+            String zhName,
+            String collectionMemberId,
+            String elementTypeId
+    ) {}
+
+    /** R25 超时（pcd）/ R26 提前完成（pca）异常控制流边；eventKind 取 OVERTIME_PCD / UNDERTIME_PCA */
+    public record ExceptionFlowIR(
+            String eventKind,
+            int targetPc,
+            String targetDefKey
     ) {}
 
     /**
@@ -157,8 +181,25 @@ import java.util.Map;
             List<NodeIR> nodes,
             List<Integer> entryNodes,
             List<ConditionRuleIR> startConditions,
-            List<ConditionRuleIR> maintainConditions
-    ) {}
+            List<ConditionRuleIR> maintainConditions,
+            List<ExceptionFlowIR> exceptionFlows
+    ) {
+        public ProcessDefIR(String defKey, String entityId, String zhName, String description,
+                            String ownerKind, String ownerTypeId, String ownerZhName,
+                            boolean timeConsuming, boolean twinLocked, boolean asyncMode, int singletonMode,
+                            String durationParamType, double timeNormal, String timeUnit,
+                            Double timeMin, Double timeMax, String distribution, Double distMin, Double distMax,
+                            Double distAvg, Double distSd, Double distParam, Long accuracyMs,
+                            String javaCode, String designViewId,
+                            List<PortIR> params, List<LocalVarIR> locals, List<NodeIR> nodes, List<Integer> entryNodes,
+                            List<ConditionRuleIR> startConditions, List<ConditionRuleIR> maintainConditions) {
+            this(defKey, entityId, zhName, description, ownerKind, ownerTypeId, ownerZhName,
+                    timeConsuming, twinLocked, asyncMode, singletonMode, durationParamType, timeNormal, timeUnit,
+                    timeMin, timeMax, distribution, distMin, distMax, distAvg, distSd, distParam, accuracyMs,
+                    javaCode, designViewId, params, locals, nodes, entryNodes,
+                    startConditions, maintainConditions, List.of());
+        }
+    }
 
     /**
      * 过程形参（定义视图里的关联对象）
@@ -206,6 +247,7 @@ import java.util.Map;
             boolean calleeTimeConsuming,
             boolean slow,
             boolean firstStart,
+            boolean lastEnd,
             OperandIR host,
             List<ArgBindingIR> inputs,
             List<ArgBindingIR> writes,
@@ -214,7 +256,15 @@ import java.util.Map;
             List<PostIR> postActions,
             double x,
             double y
-    ) {}
+    ) {
+        public NodeIR(int pc, String cellId, String entityId, String zhName, String kind, String toolKey,
+                      String calleeDefKey, boolean calleeTimeConsuming, boolean slow, boolean firstStart,
+                      OperandIR host, List<ArgBindingIR> inputs, List<ArgBindingIR> writes, String resultJavaType,
+                      List<NextIR> nexts, List<PostIR> postActions, double x, double y) {
+            this(pc, cellId, entityId, zhName, kind, toolKey, calleeDefKey, calleeTimeConsuming, slow,
+                    firstStart, false, host, inputs, writes, resultJavaType, nexts, postActions, x, y);
+        }
+    }
 
     /** 实参绑定 */
     public record ArgBindingIR(String argName, OperandIR operand) {}
@@ -235,10 +285,17 @@ import java.util.Map;
             List<ConditionIR> conditions,
             String expression,
             String eventCode,
-            long delayTicks
+            long delayTicks,
+            double probability,
+            String probabilityGroup
     ) {
         public NextIR(int targetPc, boolean conditional, String conditionSource,
-                      java.util.List<ConditionIR> conditions, String expression, String eventCode) {
+                      List<ConditionIR> conditions, String expression, String eventCode, long delayTicks) {
+            this(targetPc, conditional, conditionSource, conditions, expression, eventCode, delayTicks, 1.0D, "");
+        }
+
+        public NextIR(int targetPc, boolean conditional, String conditionSource,
+                      List<ConditionIR> conditions, String expression, String eventCode) {
             this(targetPc, conditional, conditionSource, conditions, expression, eventCode, 0L);
         }
     }
@@ -254,10 +311,32 @@ import java.util.Map;
     public record ConditionIR(int index, String op, String literal, String literalType) {}
 
     /** 节点成功后的后置动作 */
-    public record PostIR(String kind, OperandIR target, String stateLabel, String enumTypeId, OperandIR value) {}
+    public record PostIR(
+            String kind,
+            OperandIR target,
+            String stateLabel,
+            String enumTypeId,
+            OperandIR value,
+            double probability,
+            String probabilityGroup
+    ) {
+        public PostIR(String kind, OperandIR target, String stateLabel, String enumTypeId, OperandIR value) {
+            this(kind, target, stateLabel, enumTypeId, value, 1.0D, "");
+        }
+    }
 
     /** 启动 / 维持条件 */
-    public record ConditionRuleIR(OperandIR operand, String stateLabel, List<ConditionIR> conditions, String describe) {}
+    public record ConditionRuleIR(
+            OperandIR operand,
+            String stateLabel,
+            List<ConditionIR> conditions,
+            String describe,
+            String expression
+    ) {
+        public ConditionRuleIR(OperandIR operand, String stateLabel, List<ConditionIR> conditions, String describe) {
+            this(operand, stateLabel, conditions, describe, "");
+        }
+    }
 
     /**
      * 手动启动调用点：类型 / 场景设计视图里既无事件触发线也无默认启动的业务过程图元。
@@ -335,8 +414,19 @@ import java.util.Map;
             List<ArgBindingIR> args,
             List<PostIR> postActions,
             String ownerTypeId,
-            String describe
-    ) {}
+            String describe,
+            String expression,
+            double probability,
+            String probabilityGroup
+    ) {
+        public TriggerIR(String sourceTypeId, String memberToken, String eventCode, String stateLabel,
+                         List<ConditionIR> judge, OperandIR judgeOperand, List<String> contextPath,
+                         String targetDefKey, List<String> hostPath, List<ArgBindingIR> args,
+                         List<PostIR> postActions, String ownerTypeId, String describe) {
+            this(sourceTypeId, memberToken, eventCode, stateLabel, judge, judgeOperand, contextPath,
+                    targetDefKey, hostPath, args, postActions, ownerTypeId, describe, "", 1.0D, "");
+        }
+    }
 
     /**
      * 默认启动

@@ -48,11 +48,19 @@ public final class WorldContextEmitter {
         cb.addField(FieldSpec.builder(type.entity(), "self", Modifier.PRIVATE).build());
 
         cb.addMethod(MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC)
-                .addJavadoc("@param initialOverrides 启动参数（预留：按成员中文名覆盖初值）\n")
+                .addJavadoc("@param initialOverrides 启动参数：{@code 实例ID.成员名} 定点覆盖；{@code 成员名} 覆盖场景根对象成员"
+                        + "（初始化静默期内应用，不产生值变化事件）\n")
                 .addParameter(PlanModel.MODULE_RUNTIME, "runtime").addParameter(String.class, "sessionId")
                 .addParameter(long.class, "startEpochMs").addParameter(long.class, "finalStepMs")
                 .addParameter(long.class, "seed").addParameter(PlanModel.mapOfObjects(), "initialOverrides")
                 .addStatement("super(runtime, sessionId, $S, startEpochMs, finalStepMs, seed)", scene.sceneCode())
+                .addStatement("setInitialOverrides(initialOverrides)")
+                .build());
+
+        // 场景根对象：裸成员名覆盖键的作用目标（基类 applyInitialOverrides 读取）
+        cb.addMethod(MethodSpec.methodBuilder("sceneRootEntity").addAnnotation(Override.class)
+                .addModifiers(Modifier.PROTECTED).returns(PlanModel.BASE_ENTITY)
+                .addStatement("return self")
                 .build());
 
         // buildInitialWorld：场景对象 + 按画布绑定的成员取值

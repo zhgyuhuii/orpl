@@ -26,12 +26,18 @@ public final class StaticModelValidator {
     /** VAL-008：同组互斥分支概率和闭区间容差（标准 10.4） */
     public static final double PROBABILITY_SUM_MIN = 0.9999D;
     public static final double PROBABILITY_SUM_MAX = 1.0001D;
-    /** VAL-006：定值严禁连接的关系类型（消耗/生成/状态转换/输出影响，标准 7.3） */
+    /** VAL-006：定值严禁连接的关系类型（消耗/生成/状态转换/输出影响，标准 7.3）。
+     *  双口径：解析器 toViewGraph 写入的是 linkType 短名（consumption 等），
+     *  CanvasMappingTables 归一化名为 R 码（R11_CONSUMPTION 等），两套都要拦截。 */
     private static final Set<String> FORBIDDEN_FOR_CONSTANT = Set.of(
             "R11_CONSUMPTION", "R12_RESULT", "R13_IN_CHANGE", "R14_OUT_CHANGE",
-            "R15_IN_OUT_NORMALIZED", "R18_OUT_INFLUENCE");
+            "R15_IN_OUT_NORMALIZED", "R18_OUT_INFLUENCE",
+            "consumption", "result", "in-change", "out-change", "in-out", "out-influence");
     /** VAL-010：点分成员链（如 a.b.c.d），两段以上视为引用定位路径 */
     private static final Pattern MEMBER_PATH = Pattern.compile("[\\w\\u4e00-\\u9fa5]+(?:\\.[\\w\\u4e00-\\u9fa5]+)+");
+    /** VAL-007：显式编码形态（与 UniqueIdentifierGuard.VALID_ENCODE 同口径）——
+     *  存量语料内部主键（如 3cW2TNyvVxiJxV07ZlR，数字开头）不是显式编码，绝不误杀 */
+    private static final Pattern EXPLICIT_ENCODE_SHAPE = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
 
     public enum Severity { ERROR, WARNING }
 
@@ -230,12 +236,27 @@ public final class StaticModelValidator {
     private void checkProcessRules(GromaModuleIR.ProcessIR proc, List<ValidationIssue> issues) {
         List<GromaModuleIR.SubProcessStepIR> subs = proc.subSteps() == null ? List.of() : proc.subSteps();
         if (!subs.isEmpty()) {
-            // VAL-004：有子过程必须至少有一个首个启动 firstStart（标准 9.4.7）
+            // VAL-004：有子过程必须至少有一个首个启动 firstStart（标准 9.4.7）。
+            // 对齐解析器入口推断（AbModelMergerAndParser 入度兜底）：无显式 firstStart 但存在
+            // 零入度节点时，解析器会自动推断入口 → 降级 WARNING；全部节点都有入向（纯环）才 ERROR。
             boolean hasFirstStart = subs.stream().anyMatch(GromaModuleIR.SubProcessStepIR::firstStart);
             if (!hasFirstStart) {
-                issues.add(new ValidationIssue(
-                        "VAL-004", "标准 9.4.7", Severity.ERROR, proc.entityId(), proc.zhName(),
-                        "包含子过程的复合过程必须标记至少一个首个启动（firstStart）子过程"));
+                Set<Integer> targeted = new HashSet<>();
+                for (GromaModuleIR.SubProcessStepIR sub : subs) {
+                    if (sub.nextStepPcs() != null) {
+                        targeted.addAll(sub.nextStepPcs());
+                    }
+                }
+                long zeroInDegree = subs.stream().filter(s -> !targeted.contains(s.stepPc())).count();
+                if (zeroInDegree == 0L) {
+                    issues.add(new ValidationIssue(
+                            "VAL-004", "标准 9.4.7", Severity.ERROR, proc.entityId(), proc.zhName(),
+                            "包含子过程的复合过程既无显式 firstStart 也无零入度起点（纯环，无法确定入口）"));
+                } else {
+                    issues.add(new ValidationIssue(
+                            "VAL-004", "标准 9.4.7", Severity.WARNING, proc.entityId(), proc.zhName(),
+                            "无显式 firstStart，将按零入度自动推断 " + zeroInDegree + " 个入口节点"));
+                }
             }
             // VAL-001：非耗时算子不能包含耗时子过程（标准 9.2.2 & 12.1.2，规避 BE-17）
             boolean anyTimeConsumingChild = subs.stream().anyMatch(GromaModuleIR.SubProcessStepIR::timeConsuming);
@@ -247,10 +268,12 @@ public final class StaticModelValidator {
         }
     }
 
-    /** VAL-007：entityId 为 ASCII 标识符形态（显式编码）时执行格式 + 保留字严格校验 */
+    /** VAL-007：entityId 为完整合法编码形态时只做保留字冲突校验。
+     *  存量语料的内部主键（UUID 形态、数字开头）不是显式编码，直接跳过（修复误杀真实语料的缺陷）；
+     *  非法形态的手写编码在命名引擎入口处已被确定性转译，这里不重复拦截。 */
     private void validateExplicitEncode(String entityId, String zhName, List<ValidationIssue> issues) {
-        if (entityId == null || entityId.isBlank() || !entityId.chars().anyMatch(c -> c < 128 && Character.isLetter(c))) {
-            return; // 纯中文 / 空编码：走命名引擎确定性转译，不拦截
+        if (entityId == null || entityId.isBlank() || !EXPLICIT_ENCODE_SHAPE.matcher(entityId).matches()) {
+            return; // 空编码 / 中文原名 / 平台内部主键：走命名引擎确定性转译，不拦截
         }
         try {
             UniqueIdentifierGuard.validateExplicitEncodeOrThrow(entityId);

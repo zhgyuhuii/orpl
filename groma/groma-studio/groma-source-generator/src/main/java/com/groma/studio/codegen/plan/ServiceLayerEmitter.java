@@ -103,6 +103,64 @@ public final class ServiceLayerEmitter {
                 JavaFile.builder(type.serviceImpl().packageName(), cb.build()).indent("    ").build());
     }
 
+    /**
+     * 独立过程服务（说明书 3.2 节契约）：INDEPENDENT 过程（无宿主对象）统一生成
+     * {@code IIndependentProcessService} + Impl 门面；瞬时算子同步执行，耗时过程挂入步进队列。
+     * 该类型不存在独立过程时返回空列表。修复独立过程在 service 层完全缺失的缺陷。
+     */
+    public List<JavaFile> emitIndependentService() {
+        List<ProcInfo> independents = new ArrayList<>();
+        for (ProcInfo proc : model.procList) {
+            if (proc.owner() == null && "INDEPENDENT".equals(proc.ownerKind())) {
+                independents.add(proc);
+            }
+        }
+        if (independents.isEmpty()) {
+            return List.of();
+        }
+        ClassName svc = ClassName.get(model.basePkg + ".service", "IIndependentProcessService");
+        ClassName impl = ClassName.get(model.basePkg + ".service.impl", "IndependentProcessServiceImpl");
+        TypeSpec.Builder ib = TypeSpec.interfaceBuilder(svc).addModifiers(Modifier.PUBLIC)
+                .addJavadoc("独立过程服务接口：模型内共 $L 个独立过程（无宿主对象，经由 engine 层 *ProcessTask 状态机执行）\n",
+                        independents.size());
+        TypeSpec.Builder cb = TypeSpec.classBuilder(impl).addModifiers(Modifier.PUBLIC)
+                .addSuperinterface(svc).addAnnotation(SERVICE)
+                .addJavadoc("独立过程服务实现：方法体由方圆模型编译生成，@GromaUserCode 保护区内的二次开发代码在重生成时无损保留\n");
+        for (ProcInfo proc : independents) {
+            boolean instant = !proc.timeConsuming();
+            TypeName returnType = instant ? TypeName.BOOLEAN : PlanModel.PROCESS_TASK;
+            String summary = instant ? "独立瞬时算子：同步执行完毕" : "独立耗时过程：挂入步进队列并返回过程任务";
+            MethodSpec.Builder sig = MethodSpec.methodBuilder(proc.methodName()).addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                    .addJavadoc("$L（方圆独立过程原名：$L）—— $L\n", proc.zhName(), proc.zhName(), summary)
+                    .returns(returnType).addParameter(PlanModel.WORLD_CTX, "ctx");
+            MethodSpec.Builder method = MethodSpec.methodBuilder(proc.methodName()).addAnnotation(Override.class)
+                    .addModifiers(Modifier.PUBLIC).returns(returnType)
+                    .addParameter(PlanModel.WORLD_CTX, "ctx");
+            for (ParamSlot param : proc.params()) {
+                sig.addParameter(param.type(), param.field());
+                method.addParameter(param.type(), param.field());
+            }
+            CodeBlock.Builder call = CodeBlock.builder().add("new $T(ctx", proc.taskCn());
+            for (ParamSlot param : proc.params()) {
+                call.add(", $N", param.field());
+            }
+            call.add(")");
+            method.addCode(userCodeRegion(proc));
+            if (instant) {
+                method.addStatement("return $L.startTopLevel()", call.build());
+            } else {
+                method.addStatement("$T task = $L", PlanModel.PROCESS_TASK, call.build());
+                method.addStatement("ctx.launch(task)");
+                method.addStatement("return task");
+            }
+            ib.addMethod(sig.build());
+            cb.addMethod(method.build());
+        }
+        return List.of(
+                JavaFile.builder(svc.packageName(), ib.build()).indent("    ").build(),
+                JavaFile.builder(impl.packageName(), cb.build()).indent("    ").build());
+    }
+
     /** 二次开发保护区（工作区同步器按 id 无损合并） */
     static CodeBlock userCodeRegion(ProcInfo proc) {
         return CodeBlock.of("""

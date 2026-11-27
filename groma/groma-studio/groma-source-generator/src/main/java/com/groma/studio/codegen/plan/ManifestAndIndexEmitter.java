@@ -238,18 +238,28 @@ public final class ManifestAndIndexEmitter {
         md.append("## 1. 权威运行场景清单\n\n");
         md.append("| 场景中文原名 | 场景编码 | 控制器路由 | 沙盒上下文类 |\n|---|---|---|---|\n");
         for (SceneInfo scene : model.scenes) {
-            md.append("| ").append(scene.zhName()).append(" | `").append(scene.sceneCode()).append(" | `/api/v1/models/")
+            md.append("| ").append(scene.zhName()).append(" | `").append(scene.sceneCode()).append("` | `/api/v1/models/")
               .append(model.modelCode).append("/scenes/").append(scene.sceneCode()).append("` | `")
               .append(scene.contextSimple()).append("` |\n");
         }
 
         md.append("\n## 2. 领域对象与五层符号对照总表\n\n");
         md.append("| 中文原名 | 类型编码 | Entity 类 | 只读契约 | VO 类 | Service | 成员数 |\n|---|---|---|---|---|---|---|\n");
+        Map<String, Long> ownedProcCount = new java.util.HashMap<>();
+        for (ProcInfo proc : model.procList) {
+            if (proc.owner() != null) {
+                ownedProcCount.merge(proc.owner().typeId(), 1L, Long::sum);
+            }
+        }
         for (TypeInfo type : model.types.values()) {
+            // 无自有过程的类型不再虚报 Service 类名（修复索引表 phantom Service 缺陷）
+            String serviceCell = ownedProcCount.getOrDefault(type.typeId(), 0L) > 0
+                    ? "`" + type.service().simpleName() + "`"
+                    : "—";
             md.append("| ").append(type.zhName()).append("（").append(type.kind()).append("） | `").append(type.code())
               .append("` | `").append(type.entity().simpleName()).append("` | `").append(type.readOnly().simpleName())
-              .append("` | `").append(type.vo().simpleName()).append("` | `").append(type.service().simpleName())
-              .append("` | ").append(type.allMembers().size()).append(" |\n");
+              .append("` | `").append(type.vo().simpleName()).append("` | ").append(serviceCell)
+              .append(" | ").append(type.allMembers().size()).append(" |\n");
         }
 
         md.append("\n### 2.1 成员对照（中文原名 → 英文成员 → 类型 / 单位 / 初始值）\n\n");

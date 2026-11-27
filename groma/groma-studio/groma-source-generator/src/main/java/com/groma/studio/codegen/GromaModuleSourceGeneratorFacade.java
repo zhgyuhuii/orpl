@@ -80,6 +80,9 @@ public final class GromaModuleSourceGeneratorFacade {
                 putJava(bundle, file);
             }
         }
+        for (JavaFile file : serviceEmitter.emitIndependentService()) {
+            putJava(bundle, file);
+        }
         for (PlanModel.SceneInfo scene : model.scenes) {
             putJava(bundle, serviceEmitter.emitController(scene));
         }

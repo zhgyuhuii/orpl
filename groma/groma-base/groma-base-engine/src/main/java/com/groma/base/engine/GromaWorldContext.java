@@ -368,6 +368,40 @@ public abstract class GromaWorldContext extends AbstractWorldSession
         executor.run(this, scriptName, processId);
     }
 
+    /** 带输入输出的外部脚本执行器（Python 算法双向数据桥）：inputs 以 JSON 传入脚本标准输入，返回值取自标准输出 JSON */
+    public interface ExternalScriptIoExecutor {
+        java.util.Map<String, Object> run(GromaWorldContext ctx, String scriptName, String processId,
+                                          java.util.Map<String, Object> inputs);
+    }
+
+    private volatile ExternalScriptIoExecutor externalScriptIoExecutor;
+
+    public final void setExternalScriptIoExecutor(ExternalScriptIoExecutor executor) {
+        this.externalScriptIoExecutor = executor;
+    }
+
+    /**
+     * 带输入输出的受控脚本调用（修复 Python 剥离后"只调空壳、丢弃入参与返回值"断层）：
+     * IN/IN_OUT 形参打包为 inputs；返回的映射由生成代码按中文形参名回写 OUT/IN_OUT 槽位。
+     * 宿主只装了旧式执行器时退化为无参调用并记录问题。
+     */
+    public final java.util.Map<String, Object> invokeExternalScriptWithIo(String scriptName, String processId,
+                                                                          java.util.Map<String, Object> inputs) {
+        ExternalScriptIoExecutor ioExecutor = externalScriptIoExecutor;
+        if (ioExecutor != null) {
+            try {
+                java.util.Map<String, Object> out = ioExecutor.run(this, scriptName, processId,
+                        inputs == null ? Map.of() : inputs);
+                return out == null ? Map.of() : out;
+            } catch (RuntimeException ex) {
+                problem("过程 " + processId + " 的外部脚本 " + scriptName + " 执行失败: " + ex.getMessage());
+                return Map.of();
+            }
+        }
+        invokeExternalScript(scriptName, processId);
+        return Map.of();
+    }
+
     /** 记录一条世界级问题（接线路径缺失、外部干预失败等） */
     public final void recordPublicProblem(String message) {
         problem(message);
@@ -555,6 +589,9 @@ public abstract class GromaWorldContext extends AbstractWorldSession
     protected final void initEntitiesAndDefaultStarts() {
         this.silent = true;
         buildInitialWorld();
+        // 想定覆盖参数（修复 initialOverrides 悬空缺陷）：初始世界构建完成后、仍在静默期内应用，
+        // 覆盖初值不产生值变化事件。键语义：`实例ID.成员名` 定点覆盖；`成员名` 覆盖场景根对象成员。
+        applyInitialOverrides();
         this.silent = false;
         // 起步准备段：默认启动算子立即同步执行；默认启动耗时过程挂入第 0 步队列（初始化期不产生值变化事件）
         for (BaseSimEntity entity : List.copyOf(instancesInCreationOrder)) {
@@ -563,6 +600,85 @@ public abstract class GromaWorldContext extends AbstractWorldSession
                 runtime.triggerTable().fireDefaultStarts(this, entity);
             }
         }
+    }
+
+    // ------------------------------------------------------------------ 想定覆盖参数
+
+    private Map<String, Object> initialOverrides = Map.of();
+
+    /** 由生成的场景 WorldContext 构造器调用：登记启动覆盖参数（构造期登记，初始化完成后统一应用） */
+    public final void setInitialOverrides(Map<String, Object> overrides) {
+        this.initialOverrides = overrides == null ? Map.of() : Map.copyOf(overrides);
+    }
+
+    /** 场景根对象（生成子类返回 this.self；基类默认无）——裸成员名覆盖键的作用目标 */
+    protected BaseSimEntity sceneRootEntity() {
+        return null;
+    }
+
+    /**
+     * 应用想定覆盖：仍处静默期（初始化期），写入失败记录为问题不中断启动。
+     * 数值做 Integer→Double、字符串→数值 的尽力转换，兼容 JSON 反序列化类型差异。
+     */
+    private void applyInitialOverrides() {
+        if (initialOverrides.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : initialOverrides.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            try {
+                String error;
+                int dot = key.indexOf('.');
+                if (dot > 0) {
+                    error = applyOverrideValue(key.substring(0, dot), key.substring(dot + 1), value);
+                } else if (sceneRootEntity() != null) {
+                    error = applyOverrideValue(sceneRootEntity().getInstanceId(), key, value);
+                } else {
+                    error = "场景根对象未就绪，裸成员名覆盖键无法定位实例";
+                }
+                if (!error.isEmpty()) {
+                    recordProblem("[OVERRIDE] " + key + ": " + error);
+                }
+            } catch (RuntimeException ex) {
+                recordProblem("[OVERRIDE] " + key + ": " + ex.getMessage());
+            }
+        }
+    }
+
+    private String applyOverrideValue(String instanceId, String memberName, Object value) {
+        String error = setInstanceValue(instanceId, memberName, value);
+        if (!error.isEmpty() && value != null) {
+            // 尽力类型转换后重试一次（JSON 反序列化常见 Integer/String 与字段 double 不匹配）
+            Object coerced = coerceNumber(value);
+            if (coerced != value) {
+                error = setInstanceValue(instanceId, memberName, coerced);
+            }
+        }
+        return error;
+    }
+
+    private static Object coerceNumber(Object value) {
+        if (value instanceof Integer || value instanceof Long || value instanceof Float) {
+            return ((Number) value).doubleValue();
+        }
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            try {
+                if (trimmed.matches("-?\\d+\\.\\d+[Ee]?\\d*")) {
+                    return Double.parseDouble(trimmed);
+                }
+                if (trimmed.matches("-?\\d+")) {
+                    return Double.parseDouble(trimmed);
+                }
+                if ("true".equalsIgnoreCase(trimmed) || "false".equalsIgnoreCase(trimmed)) {
+                    return Boolean.parseBoolean(trimmed);
+                }
+            } catch (NumberFormatException ignored) {
+                return value;
+            }
+        }
+        return value;
     }
 
     @Override
