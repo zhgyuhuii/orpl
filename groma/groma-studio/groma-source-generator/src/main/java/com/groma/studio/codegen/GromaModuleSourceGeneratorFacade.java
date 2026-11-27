@@ -6,6 +6,7 @@ import com.groma.studio.codegen.plan.ModelLayerEmitter;
 import com.groma.studio.codegen.plan.ModuleRuntimeEmitter;
 import com.groma.studio.codegen.plan.PlanModel;
 import com.groma.studio.codegen.plan.ProcessTaskEmitter;
+import com.groma.studio.codegen.plan.RelationLayerEmitter;
 import com.groma.studio.codegen.plan.ServiceLayerEmitter;
 import com.groma.studio.codegen.plan.WorldContextEmitter;
 import com.groma.studio.ir.CompilePlanIR;
@@ -82,6 +83,11 @@ public final class GromaModuleSourceGeneratorFacade {
         }
         for (JavaFile file : serviceEmitter.emitIndependentService()) {
             putJava(bundle, file);
+        }
+        // R07~R10 关联管理器（收割外部设计稿方案 B）：associationTypes → engine/relation/*RelationManager
+        RelationLayerEmitter relationEmitter = new RelationLayerEmitter(model);
+        for (JavaFile relFile : relationEmitter.emitAll()) {
+            putJava(bundle, relFile);
         }
         for (PlanModel.SceneInfo scene : model.scenes) {
             putJava(bundle, serviceEmitter.emitController(scene));

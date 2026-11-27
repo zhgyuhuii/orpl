@@ -264,6 +264,7 @@ public final class AbModelMergerAndParser {
             walkTree(field(objA, "nodes"), "");
             classifyTypes();
             indexEnums();
+            backfillComponentEnumsFromStates();
             buildProcessDefs();
             buildWiring();
 
@@ -354,6 +355,24 @@ public final class AbModelMergerAndParser {
 
         // ------------------------------------------------------------------ 类型、成员、枚举
 
+        /**
+         * 收割块 18（模型 2 组件枚举兜底）：ENUM 定义视图未随本包导出时，
+         * 从 STATE 实体的 typeEntityId 反向归集枚举归属（enumOfState），避免枚举字段降级为 String。
+         */
+        private void backfillComponentEnumsFromStates() {
+            for (String eid : entities.keySet()) {
+                JsonNode stateEnt = entities.get(eid);
+                if (!"STATE".equals(text(stateEnt, "type")) || enumOfState.containsKey(eid)) {
+                    continue;
+                }
+                String ownerEnumId = text(stateEnt, "typeEntityId");
+                if (!ownerEnumId.isEmpty() && entities.containsKey(ownerEnumId)
+                        && "ENUM".equals(text(entities.get(ownerEnumId), "type"))) {
+                    enumOfState.put(eid, ownerEnumId);
+                }
+            }
+        }
+
         private void classifyTypes() {
             for (String eid : entities.keySet()) {
                 JsonNode entity = entities.get(eid);
@@ -372,6 +391,9 @@ public final class AbModelMergerAndParser {
                     assocTypeIds.add(eid);
                     typeKind.put(eid, ASSOCIATION_KIND);
                 }
+                // 注：外部补丁的"非顶层 SCENE 兜底收录"经回归判定为错误收割——
+                // 语料中挂在组件目录的 SCENE 实体（如"默认场景"占位）会被混入权威场景表（2→4），
+                // 破坏"权威场景仅来自组织树 SCENES 顶层"的刻意约定（见 AbModelMergerAndParserTest 场景断言）
             }
             for (String sceneId : treeSceneIds) {
                 sceneIds.add(sceneId);

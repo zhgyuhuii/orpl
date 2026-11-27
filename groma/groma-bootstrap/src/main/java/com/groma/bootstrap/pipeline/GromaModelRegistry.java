@@ -1,6 +1,7 @@
 package com.groma.bootstrap.pipeline;
 
 import com.groma.base.engine.GromaModuleRuntime;
+import com.groma.base.engine.GromaWorldContext;
 import com.groma.base.engine.runtime.GromaSessionManager;
 import com.groma.base.mcp.manifest.GromaToolManifest;
 import com.groma.base.mcp.registry.ModelToolRegistrar;
@@ -43,6 +44,7 @@ public class GromaModelRegistry {
     private final GromaSessionManager sessions;
     private final VersionPinnedHotSwapManager hotSwap;
     private final ObjectProvider<ModelToolRegistrar> registrarProvider;
+    private final org.springframework.beans.factory.ObjectProvider<GromaWorldContext.ExternalScriptIoExecutor> scriptIoExecutorProvider;
     private final ObjectMapper mapper = new ObjectMapper();
     /** 会话 id → 热挂载模型租约（宿主生命周期内由会话持有，停止时释放） */
     private final ConcurrentHashMap<String, VersionPinnedHotSwapManager.SessionModelLease> sessionLeases =
@@ -50,10 +52,12 @@ public class GromaModelRegistry {
 
     public GromaModelRegistry(GromaSessionManager sessions,
                               VersionPinnedHotSwapManager hotSwap,
-                              ObjectProvider<ModelToolRegistrar> registrarProvider) {
+                              ObjectProvider<ModelToolRegistrar> registrarProvider,
+                              org.springframework.beans.factory.ObjectProvider<GromaWorldContext.ExternalScriptIoExecutor> scriptIoExecutorProvider) {
         this.sessions = sessions;
         this.hotSwap = hotSwap;
         this.registrarProvider = registrarProvider;
+        this.scriptIoExecutorProvider = scriptIoExecutorProvider;
         this.sessions.addLifecycleListener(this::releaseSessionLease);
     }
 
@@ -93,9 +97,13 @@ public class GromaModelRegistry {
      */
     public String startSession(String modelCode, String sceneCode, Map<String, Object> initialOverrides,
                                Long seed, boolean startPaused) {
+        GromaWorldContext.ExternalScriptIoExecutor scriptExecutor = scriptIoExecutorProvider.getIfAvailable();
+        java.util.function.Consumer<GromaWorldContext> beforeInit = scriptExecutor == null ? null
+                : ctx -> ctx.setExternalScriptIoExecutor(scriptExecutor);
         GromaModuleRuntime bundled = findBundled(modelCode);
         if (bundled != null) {
-            return sessions.startSession(bundled, defaultSceneOf(bundled, sceneCode), initialOverrides, seed, startPaused, null);
+            return sessions.startSession(bundled, defaultSceneOf(bundled, sceneCode), initialOverrides, seed,
+                    startPaused, beforeInit);
         }
         VersionPinnedHotSwapManager.SessionModelLease lease = hotSwap.acquireLatestSessionLease(modelCode);
         try {
@@ -104,7 +112,7 @@ public class GromaModelRegistry {
                 throw new IllegalStateException("MODEL_NOT_FOUND: 模型 " + modelCode + " 的热挂载 services 登记不可读");
             }
             String sessionId = sessions.startSession(runtime, defaultSceneOf(runtime, sceneCode),
-                    initialOverrides, seed, startPaused, null);
+                    initialOverrides, seed, startPaused, beforeInit);
             sessionLeases.put(sessionId, lease);
             return sessionId;
         } catch (RuntimeException ex) {

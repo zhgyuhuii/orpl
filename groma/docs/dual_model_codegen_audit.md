@@ -289,4 +289,25 @@ public com.groma.base.engine.GromaWorldContext.ExternalScriptIoExecutor pythonSc
 
 **验证**：全仓编译零错误；受影响四模块回归 **BUILD SUCCESS，85 用例 0 失败 0 错误**。
 
+### 七·C、code1.md 审查结论（第五轮，2026-11-27）
+
+`docs/code1.md`（4223 行）diff 驱动审查：六个 java 文件打印段（RealCorpusEndToEndTest/ModelPipelineService/GromaModuleSourceGeneratorFacade/CompilePlanIR/StaticModelValidator/CanvasMappingTables）与本仓库**逐字节一致**（差异仅为段间空行与后续 python 块溢出）；parser 全文打印**截断于 1600 行**（前 1600 行与仓库一致，尾部未打印无从比对）；其余为 .class 版本（Java 21）/jar 清单诊断输出。**结论：无任何新实现代码，无可收割项，无需调整**——该文档是对当前仓库状态的验证性快照。
+
+### 七·D、code2.html（Gemini 对话存档）审查与收割（第六轮，2026-11-27）
+
+`docs/code2.html`（3.1MB Google Gemini 会话存档）提取出 30 个代码块，其中 12 个为实现代码（覆盖方案 A~H）。审查判定混有**真实 API 与幻觉 API**（`memberMetas()`/`publishSimEvent`/`readEnumZhLabel`/`getRightOf`/`classBaseName` 均不存在），按真实 API 适配收割：
+
+| 块 | 判定 | 落地 |
+|---|---|---|
+| 块 25（双视角事件辅助 as/xs/am/xm/ar/vr/xr/psf/paa/pca/pcd） | ✅ 适配收割 | `GromaWorldContext` 新增 `emitRelationLinked/Unlinked`、`emitCollectionElementAdded/Removed`、`emitProcessEvent`——按真实事件总线（`fire`→`enqueueMemberEvent`→`dispatchSingleEvent`）重写，非其幻觉的 `publishSimEvent` |
+| 块 20+21（RelationLayerEmitter + facade 接线） | ✅ 适配收割 | 新建 [RelationLayerEmitter.java](groma-studio/groma-source-generator/src/main/java/com/groma/studio/codegen/plan/RelationLayerEmitter.java)：associationTypes → engine/relation/*RelationManager（BidirectionalTie 子类，基数上限校验、1..1 重指向 rv/vr、越界 recordPublicProblem、rx/xr 解除）；真实 API（`getRights/getLefts`、`resolveEntityClassName`）；facade 已接线 |
+| 块 26+27（connector JSON IO + 宿主装配 + registry 挂载） | ✅ 适配收割 | `ExternalProgramConnector.runScriptWithJsonIo`（复用运行时白名单+超时强杀+独立工作目录；Jackson3 = tools.jackson）；新建 ScriptIoBridgeConfiguration（模块 /scripts 资源→临时文件→受控执行）；`GromaModelRegistry.startSession` beforeInitialize 挂载 executor（bundled+热挂载两路）——**方案 F 全链路闭环**（模型 2 Python 算法可真实执行） |
+| 块 18（场景兜底 + STATE 反向归集） | ⚠️ 半收半退 | STATE 反向归集（`backfillComponentEnumsFromStates`）✅ 收割；**场景兜底❌ 回退**——回归抓到副作用：语料中挂在组件目录的"默认场景"占位实体被混入权威场景表（2→4），破坏既有刻意约定（parser 测试 `assertEquals(2, scenes.size())` 失败）。回退后注释留档判定依据 |
+| 块 28（存档 startEpochMs/instanceSeqCursor） | ✅ 早轮已收 | 第四轮已实现（本对话上一问），本轮核对一致 |
+| 块 23/19/22（canStart 增强/checkMaintain/ReadOnly/StartDTO 草图） | ⏸ 设计稿 | 引用幻觉 API（`ParamInfo`/`proc.ir`/`p.isEntityOrReadOnly`/`renderConditionRuleBooleanExpr` 等不存在），是方案 D/E 的设计参考非可收割代码；已在 canStart 部分落地的状态前置/条件内联由第三轮实现 |
+| 块 29（bootstrap pom 默认合包 workspace 模型 Profile） | ❌ 不可收 | workspace 模块（groma-bootstrap/groma-workspace/groma-models/*）不在根 pom reactor 内（无父 pom 聚合），直连依赖会使构建直接失败；合包交付走 export-zip 静态打包（已实现） |
+| 块 24（LeafBodyEmitter 白名单 stdlib） | ⏸ 参考 | 思路正确（unsupportedMemberAccess 误杀修复），但与现有实现结构不符，独立任务处理 |
+
+**过程修正**：收割中途 connector pom 注入产生重复 `<dependencies>` 标签（grep 只筛 .java 错误漏掉了 pom 报错），全 pom XML 校验修复；场景兜底经回归判定回退。最终**85 用例 0 失败 0 错误**、全 pom 有效、scan 零违例。
+
 ## 八、回归验证与产物（含第三轮收割验证）

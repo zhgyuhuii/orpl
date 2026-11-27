@@ -10,6 +10,7 @@ com/groma/studio/codegen/plan/ProcessTaskEmitter$TaskScope.class
 com/groma/studio/codegen/plan/PlanModel$ParamSlot.class
 com/groma/studio/codegen/ProcessCodeAstTranslator$TranslationResult.class
 com/groma/studio/codegen/plan/OperandRenderer$Value.class
+com/groma/studio/codegen/plan/RelationLayerEmitter.class
 com/groma/studio/codegen/plan/ServiceLayerEmitter.class
 com/groma/studio/codegen/plan/PlanModel$EnumInfo.class
 com/groma/studio/codegen/plan/PlanModel$LocalSlot.class

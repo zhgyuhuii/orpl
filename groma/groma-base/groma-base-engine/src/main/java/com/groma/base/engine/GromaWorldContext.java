@@ -368,6 +368,55 @@ public abstract class GromaWorldContext extends AbstractWorldSession
         executor.run(this, scriptName, processId);
     }
 
+    // ------------------------------------------------------------------ 双视角关系事件辅助（方案 C 收割，R07~R10 关联管理器与集合代理使用）
+
+    /**
+     * 关联建立/重指向双视角事件：主动端发 ra（建立指向）或 rv（变更指向），
+     * 被动目标端同步发 ar / vr（收割外部设计稿并适配真实事件总线 fire → enqueueMemberEvent → dispatchSingleEvent）。
+     */
+    public void emitRelationLinked(String assocId, BaseSimEntity left, String leftMemberId,
+                                   BaseSimEntity right, String rightMemberId, boolean retargeted) {
+        String activeCode = retargeted ? "rv" : "ra";
+        String passiveCode = retargeted ? "vr" : "ar";
+        fire(activeCode, left, leftMemberId, "", right.getInstanceId(), assocId);
+        fire(passiveCode, right, rightMemberId, "", left.getInstanceId(), assocId);
+    }
+
+    /** 关联解除双视角事件：主动端发 rx（解除指向），被动目标端同步发 xr（被解除指向） */
+    public void emitRelationUnlinked(String assocId, BaseSimEntity left, String leftMemberId,
+                                     BaseSimEntity right, String rightMemberId) {
+        fire("rx", left, leftMemberId, "", right.getInstanceId(), assocId);
+        fire("xr", right, rightMemberId, "", left.getInstanceId(), assocId);
+    }
+
+    /**
+     * 集合元素增删双视角事件：持有方发 ma/mx，被操作元素实体同步发被动事件 am（加入集合）/ xm（移出集合）。
+     * 元素不是实体时仅发持有方视角。
+     */
+    public void emitCollectionElementAdded(BaseSimEntity owner, String collectionMemberId, Object element) {
+        String elemId = (element instanceof BaseSimEntity se) ? se.getInstanceId() : "";
+        fire("ma", owner, collectionMemberId, "", elemId, "");
+        if (element instanceof BaseSimEntity elemEntity) {
+            fire("am", elemEntity, collectionMemberId, "", owner.getInstanceId(), "");
+        }
+    }
+
+    public void emitCollectionElementRemoved(BaseSimEntity owner, String collectionMemberId, Object element) {
+        String elemId = (element instanceof BaseSimEntity se) ? se.getInstanceId() : "";
+        fire("mx", owner, collectionMemberId, "", elemId, "");
+        if (element instanceof BaseSimEntity elemEntity) {
+            fire("xm", elemEntity, collectionMemberId, "", owner.getInstanceId(), "");
+        }
+    }
+
+    /**
+     * 过程级四类异常与边界事件统一派发入口（psf 启动失败 / paa 维持中断 / pca 提前完成 / pcd 超时完成）。
+     */
+    public void emitProcessEvent(GromaProcessTask task, String eventCode, String detail) {
+        BaseSimEntity host = task.hostEntity();
+        fire(eventCode, host, task.getDefKey(), "", task.getProcessInstanceId(), detail);
+    }
+
     /** 带输入输出的外部脚本执行器（Python 算法双向数据桥）：inputs 以 JSON 传入脚本标准输入，返回值取自标准输出 JSON */
     public interface ExternalScriptIoExecutor {
         java.util.Map<String, Object> run(GromaWorldContext ctx, String scriptName, String processId,
@@ -851,7 +900,7 @@ public abstract class GromaWorldContext extends AbstractWorldSession
     public SimulationArchiveBundle.TaskArchivePart exportTaskHeader(String archiveId, long tickIndex) {
         return new SimulationArchiveBundle.TaskArchivePart(
                 archiveId, tickIndex, modelCode, modelVersion, sceneCode, startEpochMs, finalStepMs, seed,
-                rng.getDrawIndex(), getRequestedSpeed());
+                rng.getDrawIndex(), getRequestedSpeed(), instanceSeq);
     }
 
     @Override
@@ -910,6 +959,9 @@ public abstract class GromaWorldContext extends AbstractWorldSession
         instanceSeq = 0L;
         // 墙钟基准随存档恢复：时间日期成员（世界时间）必须与中断前一致，否则时序类比较全部错位
         restoreWorldClock(header.startEpochMs());
+        // 全局单调实例分配计数器随存档恢复（修复中文/UUID 命名实例不推进序号导致新实例撞号分叉）：
+        // 与 restoreInstances 的实例 id 数字后缀扫描取最大值双保险（旧 v1/v2 存档无游标缺省 0，不改变行为）
+        instanceSeq = Math.max(instanceSeq, header.instanceSeqCursor());
     }
 
     @Override

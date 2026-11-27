@@ -78,7 +78,7 @@ class ReloadContinuityTest {
         ArchiveCheckpointCoordinator coordinator = new ArchiveCheckpointCoordinator();
         SimulationArchiveBundle futureVersionBundle = new SimulationArchiveBundle(
                 999, "arc_bad", 10L,
-                new SimulationArchiveBundle.TaskArchivePart("arc_bad", 10L, "m", "1", "s", 0L, 1000L, 1L, 0L, 1.0D),
+                new SimulationArchiveBundle.TaskArchivePart("arc_bad", 10L, "m", "1", "s", 0L, 1000L, 1L, 0L, 1.0D, 0L),
                 List.of(), List.of(), List.of()
         );
         Assertions.assertThrows(ArchiveFormatException.class,
@@ -141,7 +141,8 @@ class ReloadContinuityTest {
         @Override
         public SimulationArchiveBundle.TaskArchivePart exportTaskHeader(String archiveId, long tickIndex) {
             return new SimulationArchiveBundle.TaskArchivePart(
-                    archiveId, tickIndex, "demo", "1", "tank", 0L, 1000L, rng.getRootSeed(), rng.getDrawIndex(), 1.0D);
+                    archiveId, tickIndex, "demo", "1", "tank", 0L, 1000L, rng.getRootSeed(), rng.getDrawIndex(), 1.0D,
+                    1L);
         }
 
         @Override

@@ -1,5 +1,6 @@
 com/groma/base/connector/ExpressionSandboxEvaluator$Var.class
 com/groma/base/connector/VirtualThreadHttpConnector.class
+com/groma/base/connector/ExternalProgramConnector$1.class
 com/groma/base/connector/ImmutableBatchPersistenceHandler.class
 com/groma/base/connector/AnyTableQueryConnector.class
 com/groma/base/connector/ExpressionSandboxEvaluator$Binary.class

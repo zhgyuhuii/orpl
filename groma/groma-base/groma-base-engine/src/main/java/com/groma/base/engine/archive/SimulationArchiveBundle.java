@@ -15,7 +15,7 @@ public record SimulationArchiveBundle(
         List<ProcessArchivePart> processParts,
         List<RelationLinkArchivePart> relationParts
 ) {
-    public static final int CURRENT_SCHEMA_VERSION = 2;
+    public static final int CURRENT_SCHEMA_VERSION = 2; // v2 追加 TaskArchivePart.instanceSeqCursor（向后兼容：旧存档缺字段缺省 0，恢复取 max 不改变行为）
     public static final int MIN_COMPATIBLE_SCHEMA_VERSION = 1;
 
     public record TaskArchivePart(
@@ -28,7 +28,8 @@ public record SimulationArchiveBundle(
             long finalStepMs,
             long rootSeed,
             long rngDrawCursor,
-            double requestedSpeed
+            double requestedSpeed,
+            long instanceSeqCursor
     ) {}
 
     public record InstanceArchivePart(

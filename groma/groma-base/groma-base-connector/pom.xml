@@ -11,6 +11,11 @@
     <artifactId>groma-base-connector</artifactId>
     <name>Groma Base :: Guarded External Connectors &amp; Reliable Persistence</name>
     <dependencies>
+        <!-- 收割块 26（方案 F）：Python 算法 JSON stdin/stdout 双向桥的序列化 -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.groma</groupId>
             <artifactId>groma-base-common</artifactId>
