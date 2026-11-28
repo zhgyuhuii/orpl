@@ -74,9 +74,10 @@ public final class DeterministicNamingFacade {
     }
 
     private SanitizedLabel selectTierInput(String entityId, String explicitEncode, String zhLabel, String alias) {
-        // Tier 1：若建模人员手工填写了有意义的合法英文词（排除存量自动生成的 wb1 / dz+hex 乱码），优先采用
-        if (explicitEncode != null && explicitEncode.matches("^[A-Za-z][A-Za-z0-9_]{3,}$")
-                && !explicitEncode.matches("^(dz|wb|gccy|dxlx)[0-9a-fA-F]+$")) {
+        // Tier 1（code5.html 3.5 收割）：ExplicitEncodeClassifier 统一鉴别——手写规范英文放行，
+        // 平台自动拼音缩写码（dxlx1/gccy1/znsczzjhznt1/wb12 等）全量回落 Tier 2~4 分词管线。
+        // 替换原四前缀黑名单正则（挡不住 znsczzjhznt1 这类无前缀拼音串）。
+        if (ExplicitEncodeClassifier.isGenuineUserEnglishEncode(explicitEncode)) {
             return IdentifierSanitizer.sanitize(explicitEncode, alias);
         }
         return IdentifierSanitizer.sanitize(zhLabel, alias);

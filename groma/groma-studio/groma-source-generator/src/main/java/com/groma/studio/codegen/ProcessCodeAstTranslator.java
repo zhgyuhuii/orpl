@@ -66,8 +66,12 @@ public final class ProcessCodeAstTranslator {
             );
         }
 
-        // 2. 尝试作为 Java 语句块解析并执行中文引用 AST 重写
-        String wrappedBlock = "{\n" + rawCode + "\n}";
+        // 2. 尝试作为 Java 语句块解析并执行中文引用 AST 重写；
+        //    解析前做全角词法归一化（code5.html 3.5 收割，闭环 12.4 E6 挂账）：
+        //    中文输入法把手写过程代码的 (){};,<>=! 打成全角是存量平台高频痛点（说明书 10.1），
+        //    仅归一化字符串字面量与注释之外的代码区，字面量内容不动（防语义漂移）
+        String normalizedCode = normalizeFullWidthLexeme(rawCode);
+        String wrappedBlock = "{\n" + normalizedCode + "\n}";
         ParseResult<BlockStmt> parsed = javaParser.parseBlock(wrappedBlock);
         if (!parsed.isSuccessful() || parsed.getResult().isEmpty()) {
             int errLine = parsed.getProblems().isEmpty()
@@ -147,6 +151,83 @@ public final class ProcessCodeAstTranslator {
         block.getStatements().forEach(stmt -> cb.add("$L\n", stmt.toString()));
         return new TranslationResult(cb.build(), null, null, null);
     }
+
+    /**
+     * 全角词法归一化（code5.html 3.5 收割）：把手写过程代码中中文输入法产生的全角
+     * 括号/分号/逗号/比较符/赋值符归一为 ASCII 等价符——字符串字面量与注释内容不动。
+     * 扫描器按 {@code "…"} 字面量与 {@code //}、{@code /*… *}{@code /} 注释分段跳过，其余区段逐字符映射。
+     */
+    static String normalizeFullWidthLexeme(String code) {
+        if (code == null || code.isEmpty() || code.chars().noneMatch(c -> c > 0xFF)) {
+            return code;
+        }
+        StringBuilder out = new StringBuilder(code.length());
+        int i = 0;
+        int n = code.length();
+        while (i < n) {
+            char c = code.charAt(i);
+            if (c == '"') {
+                // 字符串字面量：整段原样保留（含转义）
+                int j = i + 1;
+                while (j < n) {
+                    if (code.charAt(j) == '\\' && j + 1 < n) {
+                        j += 2;
+                        continue;
+                    }
+                    if (code.charAt(j) == '"') {
+                        j++;
+                        break;
+                    }
+                    j++;
+                }
+                out.append(code, i, Math.min(j, n));
+                i = Math.min(j, n);
+            } else if (c == '\'' ) {
+                // 字符字面量：整段原样保留
+                int j = i + 1;
+                while (j < n) {
+                    if (code.charAt(j) == '\\' && j + 1 < n) {
+                        j += 2;
+                        continue;
+                    }
+                    if (code.charAt(j) == '\'') {
+                        j++;
+                        break;
+                    }
+                    j++;
+                }
+                out.append(code, i, Math.min(j, n));
+                i = Math.min(j, n);
+            } else if (c == '/' && i + 1 < n && code.charAt(i + 1) == '/') {
+                // 行注释：整行原样保留
+                int j = code.indexOf('\n', i);
+                j = j < 0 ? n : j;
+                out.append(code, i, j);
+                i = j;
+            } else if (c == '/' && i + 1 < n && code.charAt(i + 1) == '*') {
+                // 块注释：整段原样保留
+                int j = code.indexOf("*/", i + 2);
+                j = j < 0 ? n : j + 2;
+                out.append(code, i, j);
+                i = j;
+            } else {
+                out.append(FULL_WIDTH_MAP.getOrDefault(c, c));
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    private static final java.util.Map<Character, Character> FULL_WIDTH_MAP = java.util.Map.ofEntries(
+            java.util.Map.entry('（', '('), java.util.Map.entry('）', ')'),
+            java.util.Map.entry('｛', '{'), java.util.Map.entry('｝', '}'),
+            java.util.Map.entry('【', '['), java.util.Map.entry('】', ']'),
+            java.util.Map.entry('；', ';'), java.util.Map.entry('，', ','),
+            java.util.Map.entry('＜', '<'), java.util.Map.entry('＞', '>'),
+            java.util.Map.entry('＝', '='), java.util.Map.entry('！', '!'),
+            java.util.Map.entry('＋', '+'), java.util.Map.entry('－', '-'),
+            java.util.Map.entry('＊', '*'), java.util.Map.entry('／', '/'),
+            java.util.Map.entry('：', ':'), java.util.Map.entry('　', ' '));
 
     private void rewriteNameExprsInSubtree(com.github.javaparser.ast.Node root, Map<String, VarBinding> bindings) {
         root.findAll(NameExpr.class).forEach(ne -> {

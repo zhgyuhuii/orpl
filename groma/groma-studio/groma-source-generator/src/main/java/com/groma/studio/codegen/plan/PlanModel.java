@@ -430,7 +430,9 @@ public final class PlanModel {
         // 2. 类型外壳（先占位类名，再解析成员类型）
         Map<String, List<TypeInfo>> parentHolder = new LinkedHashMap<>();
         for (TypeDefIR type : plan.types()) {
-            String code = naming.resolveEntityClassName(type.entityId(), "", type.zhName(), "");
+            // Tier 1 接线（code5.html 3.5 收割）：类型显式编码进命名引擎，由 ExplicitEncodeClassifier 鉴别；
+            // 自动码全回落（三语料出码逐字节不变的回归裁判），手写英文直采
+            String code = naming.resolveEntityClassName(type.entityId(), type.explicitEncode(), type.zhName(), "");
             types.put(type.entityId(), new TypeInfo(
                     type.entityId(), type.zhName(), type.kind(), code,
                     ClassName.get(basePkg + ".model.entity", code + "Entity"),

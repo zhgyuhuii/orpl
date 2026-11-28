@@ -115,7 +115,20 @@ public class RepoModelsSyncService {
             LOG.warn("[RepoSync] 聚合 pom 重写结果 XML 校验失败，保留原文件: {}", ex.getMessage());
             return;
         }
-        Files.writeString(pom, rewritten, StandardCharsets.UTF_8);
+        // 原子写（code5.html 架构批评收割：并发上传时直接覆写聚合 pom 存在写撕裂竞态——
+        // 临时文件 + ATOMIC_MOVE 保证读到完整旧版或完整新版，绝不出现半截 XML）
+        Path tmp = Files.createTempFile(repoModelsRoot, "pom-", ".xml.tmp");
+        try {
+            Files.writeString(tmp, rewritten, StandardCharsets.UTF_8);
+            try {
+                Files.move(tmp, pom, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                Files.move(tmp, pom, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
     }
 
     private static String stableBaseOf(String moduleDirName) {

@@ -617,3 +617,38 @@ localhost WS——getproxies 读系统配置，须显式 proxy=None）。
    存档/重载测试中持续覆盖；BuiltinTools 存量语义（1 基序号、越界提示文案）测试锁定。
 4. **进程级 ods 对拍**：不可行（本地无法运行 ods），挂账待具备内网/中间件环境后以同语料
    同种子双跑逐拍 diff 收口——现有代理证据已覆盖事件语义、工具语义、协议语义三层。
+
+## 十四、code5.html（Gemini 第五轮存档）核实与收割（2026-11-28 第十轮）
+
+> 输入：`docs/code5.html`（2.8MB）——基于 13.6 节的续作：12 项挂账全景 + 首席架构师 5 大批评 + 6 组生产级方案代码。
+> 本轮逐条实证核查 → 按真实 API 适配收割 C1~C5 → 全量回归。
+
+### 14.1 断言核查矩阵
+
+| code5 断言 | 判定 | 实证 |
+|---|---|---|
+| Python 桥同步阻塞单写者线程（冷启动 100~500ms 冻结同核会话） | ✅ 属实 | `invokeExternalScriptWithIo` 写者线程直调 → `ProcessBuilder.start()+waitFor`（ExternalProgramConnector:57~68）。**方案（进程池+WAITING_EXTERNAL_IO 状态机）涉及会话推进门栓协议演进，本轮不收、挂账**（挂账参考 code5 3.3 方案） |
+| naming Tier1 全调用点传 "" | ✅ 属实但机制已半接 | `selectTierInput` 判定在（内置 4 前缀黑名单），调用点传空串；**黑名单挡不住 znsczzjhznt1**（无前缀拼音串会被误放行）——收割 C1 修复 |
+| 初态/importState 集合挂接不对称 | ❌ **不属实** | 实证 importState → setMemberValue → ctx-setter → `ObservableEntityList.observed(...)`，续跑路径同样保留事件汇包装（SuspensionControlEntity 实测） |
+| am/xm 跨集合串扰 | ❌ 不属实 | am/xm 以持有方集合成员令牌精确派发（`Box|attr_cards|am`），类型级通配 `Card|*|am` 是"被加入任何集合"的既定类型级语义，非串扰 |
+| fat jar javac 对拍恒失败 | ✅ 属实（=13.4 第 3 项挂账） | 嵌套依赖不在 java.class.path——收割 C3 修复 |
+| RepoModelsSyncService 运行态反向写源码树（git dirty/并发 pom 撕裂） | ⚠️ 部分属实 | "运行态即部署态"是 E2 显式取舍（repo-models-root 默认关闭、部署者显式开启）；**并发 pom 写撕裂批评成立**——收割 C4 原子写；整体反模式批评记入挂账（可选演进：导出时临时沙盒聚合） |
+| fireLineProbe 行级探针缺失（仅 line=0/-1） | ⚠️ **过时** | 生成代码已织入 `fireLineProbe("cg_cmp")`、引擎 `debugProbe` 钩子已在（GromaProcessTask:363）；**缺的是 debug-server 消费侧接线**（setDebugProbe 零调用）与虚拟线程挂起语义——挂账（涉 DAP 协议） |
+| R07 容器零物化（直引退化） | ✅ 属实 | SingleRef/MultiRefSet 定义后零用点——收割 C5 引擎侧增强；**parser 物化+出码继续挂账**（本轮范围裁定：容器语义件先行，语料 0 条 R07 边） |
+| 千模型 Metaspace 算账爆掉 说明书 1.8GB | ⚠️ 方向属实、数字未实测 | 单模块 ~380 class 推算 1000 模块 38 万类，Metaspace 压力真实；Lazy-Mounted Pod/去 Spring 化是正确方向但属架构演进——挂账（code5 方案为参考） |
+| TD 差量帧/千模型压测/行级 DAP/R24/R27/ods 进程级 diff/M5~M8 | ✅ 挂账确认 | 与 13.3 挂账一致，本轮不收（TD 涉前端协议、压测需千模块资产、R24 语料孤儿） |
+
+### 14.2 收割清单（C1~C5，全部带单测/回归裁判）
+
+| # | 内容 | 位置 | 裁判 |
+|---|---|---|---|
+| C1 | **ExplicitEncodeClassifier**（词形鉴别：手写英文放行/拼音自动码回落）+ `selectTierInput` 替换四前缀黑名单 + 类型类名调用点接线（`type.explicitEncode()` 直传） | groma-naming-engine + source-generator PlanModel | 三语料回归绿（自动码 100% 回落→出码零漂移）+ ExplicitEncodeClassifierTest 3 用例（floodWall 放行 / dxlx1、znsczzjhznt1 拒 / 技术缩写白名单） |
+| C2 | **全角词法归一化**（translator 解析前置；字面量/注释内容不动防语义漂移；纯 ASCII 零拷贝快路径） | ProcessCodeAstTranslator | FullWidthLexemeNormalizerTest 5 用例 |
+| C3 | **fat jar javac 对拍**：classpath 构建抽 `verificationClasspath()`——fat jar 形态追加 `jar:file:self!/BOOT-INF/classes` 与 `!/BOOT-INF/lib/*.jar`；IDE/源码树形态零变化 | JavacParityVerifier | 编译绿；真机冒烟复验挂账（javac 对嵌套 jar URL 的解析需运行态实证） |
+| C4 | **聚合 pom 原子写**（临时文件 + ATOMIC_MOVE，并发上传写撕裂消除） | RepoModelsSyncService | 编译绿；真机冒烟复验 |
+| C5 | **R07 容器语义件增强**：SingleRef 1..1 必选基数置空拦截 + 构建期静默 + 存档对称（exportTarget/importTarget/silentLinkTo）；MultiRefSet silentAddAll/exportOrderedList/size | groma-base-common container | R07ContainerSemanticsTest 4 用例（事件三态/基数拦截/存档对称/集合边界） |
+
+### 14.3 挂账更新
+
+- 关闭：H4/Tier1（安全鉴别器落地，EnumIR 加字段与其余 13 处调用点接线仍挂账——收益递减：语料 encode 全自动码）、12.4 E6（全角归一化落地）、13.4 第 3 项（fat jar 对拍代码落地，运行态复验挂账）。
+- 新增挂账（code5 方案为参考）：Python 常驻进程池 + WAITING_EXTERNAL_IO 状态机（真问题，涉会话推进协议）；debug-server 接 setDebugProbe（行级断点最后一公里）；R07 parser 物化+出码；RepoModelsSyncService 临时沙盒聚合形态；Lazy-Mounted Pod；千模型容量实测。

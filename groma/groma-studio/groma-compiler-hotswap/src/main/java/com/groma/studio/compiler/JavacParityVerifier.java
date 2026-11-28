@@ -75,13 +75,11 @@ public final class JavacParityVerifier {
             compilationUnits.add(new SourceMemObject(relPath, fqcn, entry.getValue()));
         }
 
-        // 自动继承当前 JVM 进程的 java.class.path，绝不在配置文件写死任何本机路径（落实 BE-CMP-002）
-        String runtimeClasspath = System.getProperty("java.class.path", "");
         List<String> options = List.of(
                 "--release", "21",
                 "-parameters",
                 "-g:lines,vars,source",
-                "-classpath", runtimeClasspath
+                "-classpath", verificationClasspath()
         );
 
         Boolean ok = compiler.getTask(null, memManager, collector, options, null, compilationUnits).call();
@@ -130,6 +128,59 @@ public final class JavacParityVerifier {
                 EcjInMemoryCompiler.extractResources(javaFilesByRelPath),
                 List.copyOf(diagnostics)
         );
+    }
+
+    /**
+     * javac 对拍 classpath（code5.html 3.5 收割，闭环 13.4 挂账）：
+     * 源码树/CI 形态 = 进程 {@code java.class.path}（零写死，BE-CMP-002 原语义）；
+     * Spring Boot fat jar 形态 = 追加本 jar 的 {@code BOOT-INF/classes} 与 {@code BOOT-INF/lib/*.jar}
+     * （嵌套依赖不在 java.class.path，原实现对拍恒失败——真机轮 13.4 第 3 项实证）。
+     * jar 内条目经 {@code jar:file:…!/…} URL 直接喂 javac，不解包落盘。
+     */
+    static String verificationClasspath() {
+        String base = System.getProperty("java.class.path", "");
+        java.nio.file.Path selfJar = selfExecutableJar();
+        if (selfJar == null) {
+            return base;
+        }
+        StringBuilder cp = new StringBuilder(base);
+        try (java.util.jar.JarFile jar = new java.util.jar.JarFile(selfJar.toFile())) {
+            if (jar.getJarEntry("BOOT-INF/classes/") != null) {
+                cp.append(java.io.File.pathSeparatorChar)
+                        .append(selfJar.toUri() + "!/BOOT-INF/classes");
+            }
+            java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                String name = entries.nextElement().getName();
+                if (name.startsWith("BOOT-INF/lib/") && name.endsWith(".jar")) {
+                    cp.append(java.io.File.pathSeparatorChar)
+                            .append(selfJar.toUri() + "!/" + name);
+                }
+            }
+        } catch (java.io.IOException ex) {
+            // 非可执行 jar 或读取失败：退回原语义（java.class.path）
+            return base;
+        }
+        return cp.toString();
+    }
+
+    /** 定位当前进程的可执行 fat jar（IDE/exploded 形态返回 null 走原语义） */
+    private static java.nio.file.Path selfExecutableJar() {
+        try {
+            java.security.ProtectionDomain domain = JavacParityVerifier.class.getProtectionDomain();
+            java.security.CodeSource source = domain.getCodeSource();
+            if (source == null || source.getLocation() == null) {
+                return null;
+            }
+            java.nio.file.Path path = java.nio.file.Path.of(source.getLocation().toURI());
+            if (java.nio.file.Files.isRegularFile(path) && path.getFileName().toString().endsWith(".jar")
+                    && path.toFile().length() > 1024 * 1024) {
+                return path;
+            }
+            return null;
+        } catch (RuntimeException | java.net.URISyntaxException ex) {
+            return null;
+        }
     }
 
     private static final class SourceMemObject extends SimpleJavaFileObject {
