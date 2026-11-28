@@ -685,3 +685,51 @@ localhost WS——getproxies 读系统配置，须显式 proxy=None）。
 
 - 新增挂账：BO 消歧宿主前缀化与数字开头中文序号词命名修正（全量漂移需专项回归）、时间染色同步算子编译（生成器架构演进）、Dirty CoW 快照、四态会话生命周期（IDLE_PARKED/WAITING_ASYNC_IO）、MultiDialectSqlNormalizer。
 - 维持挂账：TD 差量帧、行级 DAP、Python 进程池、R07 出码物化、千模型实测、ods 进程级 diff、M5~M8。
+
+## 十六、code7/code9.html 核对与挂账收割（2026-11-28 第十二轮）
+
+> 输入：`docs/code7.html`、`docs/code9.html`——均为"挂账清单投喂 Gemini"型存档：code7 自认无法读仓
+> （凭空编写），code9 同构。其代码全部为幻觉 API 不可直接收，按需求书逐项由本仓实现落地。
+> 本轮同时完成挂账核对（#1 维持不收裁定、#3 裁决、#21/#22 关闭）与一个重量级引擎语义修复。
+
+### 16.1 挂账核对结论
+
+| 挂账项 | 核对结论 | 处置 |
+|---|---|---|
+| #1 R07 出码物化 | **维持不收（裁定升级）**：rm-b2 的 unidirectional-association 边是占位 gap 形态（source/target=成员+过程图元，非"类型成员↔类型成员"真关联）；真 R07 语料不存在。容器语义件已备（14 轮 C5），真语料出现时启用 | 挂账措辞更新 |
+| #3 R25/R26 顶层补偿 + R13/R15 前锚点运行期裁判 | **裁判落地并揪出重量级引擎语义缺口（见 16.2）**：rm-c4 合成语料 + TopLevelCompensationRuntimeTest 全链路绿 | #3 的 R25/R26 侧关闭 |
+| #21 ods 离线轨迹 diff 对拍器 | **落地**：`tools/regression/trajectory_diff.py`（零依赖；逐拍对齐/事件多重集/浮点容差/无序归一/首分叉因果摘要），一致/分叉双路径自测通过 | 关闭（存量侧轨迹导出后即用） |
+| #22 fat jar javac 对拍真机复验 | **落地并两轮修正**：①嵌套 jar URL javac 不认→解包缓存方案；②Spring Boot 3.x CodeSource 为 `jar:nested:` 协议→正则提取主 jar。真机冒烟 EXIT=0 且 **javac 对拍 253 类全对拍通过**（原恒失败 102 错） | 关闭 |
+| #7/#8/#10 命名美学、#4/#5/#6、C/D/E 类 | 维持挂账（与 15.3 一致，无新证据） | 不变 |
+
+### 16.2 重量级引擎语义修复：耗时过程"机器清空即零耗时完成"（rm-c4 裁判揪出）
+
+**发现过程**（全链取证，groma-base-engine GromaProcessTask）：
+rm-c4 合成语料（被监控耗时流 timeNormal=6s/timeMax=1.5s + 耗时子过程 2s + 过程级 overtime 边 +
+补偿哨兵）→ 事件恒只有 pr×2、无 pcd/补偿。逐层钉场：fixture LINK 实体缺失（cell data 无实体→
+linkType 读空→边丢弃）；异常流 `targetDefKey` 传死空串（**parser 真缺口**，顶层 wiring 被消费侧
+跳过——已修：过程级补偿目标填 `defKeyOf(target)`）；emitJudgeUtil 对非触发线 wiring 越界
+`triggers.get`（已修守卫）；`onEvent` 的 `$L` 直传 `List.of()` 对象渲染非法文本（已修 listOf）。
+最终 FINISH-DEBUG 调用栈实锤：**monitor/inner 均在 tick1 内 finishSuccess——机器即清空的耗时过程
+零耗时完成（elapsed=1000ms < timeMax=1500ms 亦 SUCCESS），pcd/pca 永不可达**。
+
+**根因**：WAIT4SUCCESS（机器走完）被当成"可立即收尾"，两处收尾点（runProcess WAIT4 分支、
+commit 尾部）均缺"期望时长已满"判定——耗时过程的 expectedMs 在途语义整体缺失。
+
+**修复**（双处同口径）：WAIT4SUCCESS 且 timeConsuming 且 elapsedMs < expectedMs → 留在途
+（elapsed 由 runProcess 逐拍累计），期满才 finishSuccess。修复后：monitor 在途 2 拍、elapsed
+越过 timeMax 判 pcd、补偿过程经触发表拉起写标记，全链路绿；rm-c1 三用例保持绿。
+
+**附带发现**：调试期间两次运行事件集不同（同生成物同种子）——系探针注入改变时序所致的观测扰动，
+修复后多次复跑结果一致；确定性回归（RealCorpusEndToEndTest 双跑全等）保持绿，红线未破。
+
+### 16.3 挂账更新（第十二轮后全景）
+
+- **关闭**：#3（R25/R26 顶层补偿裁判绿；R13/R15 前锚点仍挂账——调试中发现其 anchor 激活条件
+  与 guard 归属过滤互相矛盾，属死代码，语义待与说明书 R13 原文对齐后重实现）、#21、#22。
+- **新增挂账**：R13/R15 前锚点死代码语义重实现（anchor 分支激活条件与 targetsThisProcess 归属
+  过滤矛盾：target=过程调用点时 STATE 判定永假、target=STATE 时归属过滤拦下——需定稿画布形态
+  约定后重写）；11 轮 WAIT4 冻结修复与本轮在途语义修复的叠加时序需在存档续跑（rm-b2 300 拍）
+  长程回归中复核（本轮全量回归已含存档续跑用例，绿）。
+- 全量回归（引擎修复后重跑）**111 用例 0 失败 0 错误 0 跳过**（110+TopLevelCompensationRuntimeTest）；
+  scan 零违例；真机冒烟 EXIT=0 且 javac 对拍 253 类通过。

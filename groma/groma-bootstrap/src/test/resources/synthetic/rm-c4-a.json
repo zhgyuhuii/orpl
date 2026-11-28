@@ -1,0 +1,301 @@
+{
+  "success": true,
+  "obj": {
+    "id": "RM_C4_TOP_COMP",
+    "label": "顶层超时补偿验证模型",
+    "version": 1,
+    "nodes": [
+      {
+        "id": "folder_scenes_c4",
+        "type": "SCENES",
+        "label": "运行场景",
+        "nodes": [
+          {
+            "id": "node_sc_c4",
+            "entityId": "sc_c4",
+            "type": "SCENE",
+            "label": "顶层超时补偿验证场景",
+            "defineViewId": "defineView_sc_c4",
+            "designViewId": "designView_sc_c4",
+            "nodes": [
+              {
+                "id": "n_m1",
+                "entityId": "attr_done_flag",
+                "type": "ATTRIBUTE-MEMBER",
+                "label": "补偿标记"
+              },
+              {
+                "id": "n_p1",
+                "entityId": "proc_monitor",
+                "type": "PROCESS",
+                "label": "超时监控流"
+              },
+              {
+                "id": "n_p2",
+                "entityId": "proc_inner",
+                "type": "PROCESS",
+                "label": "拖拍子过程"
+              },
+              {
+                "id": "n_p3",
+                "entityId": "proc_comp",
+                "type": "PROCESS",
+                "label": "补偿哨兵"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "entities": [
+      {
+        "id": "sc_c4",
+        "type": "SCENE",
+        "label": "顶层超时补偿验证场景",
+        "defineViewId": "defineView_sc_c4",
+        "designViewId": "designView_sc_c4"
+      },
+      {
+        "id": "attr_done_flag",
+        "type": "ATTRIBUTE-MEMBER",
+        "label": "补偿标记",
+        "fieldType": "double",
+        "typeEntityId": "sc_c4",
+        "typeRange": "BASE",
+        "defaultValue": "0.0"
+      },
+      {
+        "id": "proc_monitor",
+        "type": "PROCESS",
+        "label": "超时监控流",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 6.0,
+        "timeMax": 1.5,
+        "typeEntityId": "sc_c4",
+        "defineViewId": "defineView_monitor",
+        "designViewId": "designView_monitor"
+      },
+      {
+        "id": "proc_inner",
+        "type": "PROCESS",
+        "label": "拖拍子过程",
+        "timeRelated": "RELATED",
+        "timeUnit": "s",
+        "timeNormal": 2.0,
+        "typeEntityId": "sc_c4",
+        "defineViewId": "defineView_inner",
+        "designViewId": "designView_inner"
+      },
+      {
+        "id": "proc_comp",
+        "type": "PROCESS",
+        "label": "补偿哨兵",
+        "timeRelated": "UNRELATED",
+        "typeEntityId": "sc_c4",
+        "defineViewId": "defineView_comp",
+        "designViewId": "designView_comp"
+      },
+      {
+        "id": "proc_cmp",
+        "type": "PROCESS",
+        "label": "空比较",
+        "timeRelated": "UNRELATED",
+        "innerClass": "compare",
+        "innerType": "eq",
+        "typeEntityId": "sc_c4",
+        "defineViewId": "defineView_cmp",
+        "designViewId": "designView_cmp"
+      },
+      {
+        "id": "proc_assign",
+        "type": "PROCESS",
+        "label": "置一赋值",
+        "timeRelated": "UNRELATED",
+        "innerClass": "assignment",
+        "innerType": "resetToOne",
+        "typeEntityId": "sc_c4",
+        "defineViewId": "defineView_assign",
+        "designViewId": "designView_assign"
+      },
+      {
+        "id": "lnk_fixed_c",
+        "type": "LINK",
+        "linkType": "fixed"
+      },
+      {
+        "id": "lm_entry_inner",
+        "type": "LINK",
+        "linkType": "invocation"
+      },
+      {
+        "id": "lm_overtime",
+        "type": "LINK",
+        "linkType": "overtime-exception"
+      }
+    ],
+    "cellMap": {
+      "designView_sc_c4": [
+        {
+          "id": "cn_monitor",
+          "data": "proc_monitor",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "超时监控流",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true",
+          "defaultStart": "true"
+        }
+      ],
+      "designView_monitor": [
+        {
+          "id": "cm_entry",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "入口",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true"
+        },
+        {
+          "id": "cm_inner",
+          "data": "proc_inner",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "拖拍子过程",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cm_done",
+          "data": "attr_done_flag",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "补偿标记",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cm_comp",
+          "data": "proc_comp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "补偿哨兵",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "lm_entry_inner",
+          "data": "lm_entry_inner",
+          "type": "LINK",
+          "shape": "edge-invocation",
+          "linkType": "invocation",
+          "source": {
+            "cell": "cm_entry",
+            "port": ""
+          },
+          "target": {
+            "cell": "cm_inner",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "lm_overtime",
+          "data": "lm_overtime",
+          "type": "LINK",
+          "shape": "edge-overtime-exception",
+          "linkType": "overtime-exception",
+          "source": {
+            "cell": "cm_done",
+            "port": ""
+          },
+          "target": {
+            "cell": "cm_comp",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "lm_fixed_done",
+          "data": "lm_fixed_done",
+          "type": "LINK",
+          "shape": "edge-fixed",
+          "linkType": "fixed",
+          "source": {
+            "cell": "cm_done",
+            "port": ""
+          },
+          "target": {
+            "cell": "cm_comp",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_inner": [
+        {
+          "id": "ci_cmp",
+          "data": "proc_cmp",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "空比较",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true"
+        }
+      ],
+      "defineView_sc_c4": [],
+      "defineView_monitor": [],
+      "defineView_inner": [],
+      "defineView_comp": [],
+      "defineView_cmp": [],
+      "designView_comp": [
+        {
+          "id": "cc_a",
+          "data": "proc_assign",
+          "type": "PROCESS",
+          "shape": "node-process",
+          "label": "置一赋值",
+          "x": 0,
+          "y": 0,
+          "firstStart": "true"
+        },
+        {
+          "id": "cc_done",
+          "data": "attr_done_flag",
+          "type": "ATTRIBUTE-MEMBER",
+          "shape": "node-attribute-member",
+          "label": "补偿标记",
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": "cc_fixed",
+          "data": "lnk_fixed_c",
+          "type": "LINK",
+          "shape": "edge-fixed",
+          "linkType": "fixed",
+          "source": {
+            "cell": "cc_done",
+            "port": ""
+          },
+          "target": {
+            "cell": "cc_a",
+            "port": ""
+          },
+          "x": 0,
+          "y": 0
+        }
+      ],
+      "designView_cmp": [],
+      "defineView_assign": [],
+      "designView_assign": []
+    }
+  }
+}

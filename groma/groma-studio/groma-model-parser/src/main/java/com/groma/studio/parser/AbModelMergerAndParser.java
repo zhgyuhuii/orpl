@@ -758,10 +758,15 @@ public final class AbModelMergerAndParser {
                         Integer srcPc = pcByCell.get(text(source, "id"));
                         Integer dstPc = pcByCell.get(text(target, "id"));
                         if (dstPc != null) {
+                            // 过程级（sourcePc=-1）补偿目标须带过程定义键：顶层补偿 wiring
+                            // （ModuleRuntimeEmitter）按 targetDefKey 注册 pcd/pca 触发监听；
+                            // 空串会被消费侧跳过（rm-c4 运行期裁判实证的真缺口）
+                            String compensationDefKey = srcPc != null && srcPc >= 0 ? ""
+                                    : defKeyOf(entities.get(text(target, "data")));
                             exceptions.add(new ExceptionFlowIR(
                                     overtime ? "OVERTIME_PCD" : "UNDERTIME_PCA",
                                     srcPc == null ? -1 : srcPc,
-                                    dstPc, ""));
+                                    dstPc, compensationDefKey));
                         }
                         continue;
                     }

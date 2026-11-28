@@ -45,3 +45,6 @@ groma/groma-bootstrap/groma-workspace/
 **/.DS_Store
 **/data-*.json
 **/scene-*.json
+
+# --- 运行期工作区（真机冒烟的 workspace-root 实际落点，v9 瘦身漏网）---
+groma/groma-workspace/

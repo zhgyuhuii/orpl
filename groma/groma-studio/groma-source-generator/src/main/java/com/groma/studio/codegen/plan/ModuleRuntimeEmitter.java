@@ -182,7 +182,7 @@ public final class ModuleRuntimeEmitter {
                     wiring.exceptionExitCode(), target.zhName());
             body.addStatement("table.onEvent($S, $S, $S, $S, null, $L, $L, this::start$L, $S)",
                     sourceType == null ? "" : sourceType.code(), wiring.sourceDefKey(),
-                    wiring.exceptionExitCode(), "", List.of(), List.of(), wiring.seq(), target.zhName());
+                    wiring.exceptionExitCode(), "", listOf(List.of()), listOf(List.of()), wiring.seq(), target.zhName());
         } else {
             TriggerIR trigger = triggerOf(wiring.seq());
             TypeInfo sourceType = model.types.get(trigger.sourceTypeId());
@@ -808,7 +808,9 @@ public final class ModuleRuntimeEmitter {
                 .addJavadoc("线上逻辑判断工具（类型 / 场景设计视图里连线上的线上判断，原生比较、零表达式引擎开销）\n")
                 .addMethod(MethodSpec.constructorBuilder().addModifiers(Modifier.PRIVATE).build());
         for (Wiring wiring : wirings()) {
-            if (wiring.defaultStart() || wiring.manual()) {
+            // 只有事件触发线（非默认启动/手动启动/顶层补偿）才有线上判断；越界即非触发线（rm-c4 裁判实证）
+            if (wiring.defaultStart() || wiring.manual() || !wiring.exceptionExitCode().isEmpty()
+                    || wiring.seq() - model.defaultStarts.size() - 1 >= model.triggers.size()) {
                 continue;
             }
             TriggerIR trigger = triggerOf(wiring.seq());

@@ -552,6 +552,16 @@ public abstract class GromaProcessTask {
                     collectFinishedChildren();
                 }
             }
+            // 耗时过程在途语义（rm-c4 运行期裁判实证修复）：WAIT4 只表示节点链走完，
+            // 仍须逐拍等满期望时长方可收尾——否则机器即清空的耗时过程零耗时完成，
+            // elapsedMs 恒小于 timeMin/timeMax，R25/R26 超时判定（pcd/pca）永不可达。
+            if (timing.timeConsuming()) {
+                elapsedMs += ctx.getFinalStepMs();
+                boolean due = expectedMs <= 0L || elapsedMs >= expectedMs;
+                if (!due) {
+                    return;
+                }
+            }
             if (!finished() && children.isEmpty()) {
                 finishSuccess();
             }
@@ -667,6 +677,11 @@ public abstract class GromaProcessTask {
         }
         if (!finished() && children.isEmpty()) {
             if (WAIT4SUCCESS.equals(status)) {
+                // 耗时过程在途语义（rm-c4 运行期裁判实证修复，与 runProcess WAIT4 分支同口径）：
+                // 机器清空 ≠ 期望时长已满；elapsed 未达 expectedMs 时留在途（elapsed 由 runProcess 逐拍累计）
+                if (timing.timeConsuming() && expectedMs > 0L && elapsedMs < expectedMs) {
+                    return;
+                }
                 finishSuccess();
             } else if (FAILED.equals(status) || ABORTED.equals(status)) {
                 finishNow();

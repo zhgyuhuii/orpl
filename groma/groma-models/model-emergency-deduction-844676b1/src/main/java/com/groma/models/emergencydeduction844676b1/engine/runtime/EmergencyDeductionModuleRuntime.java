@@ -102,6 +102,15 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
 
     public EmergencyDeductionModuleRuntime() {
         GromaTriggerTable table = this.triggerTable;
+        registerWiringShard0(table);
+        registerWiringShard1(table);
+        registerWiringShard2(table);
+    }
+
+    /**
+     * 接线登记分片 0（16 条；分片注册防单方法字节码超限）
+     */
+    private void registerWiringShard0(GromaTriggerTable table) {
         // 默认启动：文件类型 创建后启动「文件初始化」
         table.onDefaultStart("FileType", java.util.List.of(), this::start1, "文件初始化");
         // 默认启动：线路与列车 创建后启动「形成车站与列车的关联」
@@ -134,6 +143,12 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         table.onEvent("Station", "ZYx31ZY8GstGNur40z2", "sa", "积水", null, java.util.List.of("cs7DzmGZqyZnfP20Gsy"), java.util.List.of("6NOAfgYaMv32vdr5VlF"), this::start15, "车站与区间水流交换");
         // invocation 1转换为停站：场景1.文本2 [a] →「1转换为停站」
         table.onEvent("Scene1", "Cwaojup8iZOpBuisiCL", "a", "", null, java.util.List.of(), java.util.List.of(), this::start16, "1转换为停站");
+    }
+
+    /**
+     * 接线登记分片 1（16 条；分片注册防单方法字节码超限）
+     */
+    private void registerWiringShard1(GromaTriggerTable table) {
         // invocation 2把否变成是：场景1.列车状态1 [sa] →「2把否变成是」
         table.onEvent("Scene1", "xuFANgtC3Dzw6jUE1H4", "sa", "停站", null, java.util.List.of(), java.util.List.of(), this::start17, "2把否变成是");
         // invocation 3转换为行驶：场景1.文本1 [v] →「3转换为行驶」
@@ -153,6 +168,12 @@ public final class EmergencyDeductionModuleRuntime implements GromaModuleRuntime
         // 手动启动点：「逐行读取文件内容」（类型 文件服务；无事件触发线与默认启动，供 startManually 外部干预）
         // 手动启动点：「判断文件是否为空」（类型 文件服务；无事件触发线与默认启动，供 startManually 外部干预）
         // 手动启动点：「文件初始化」（类型 文件服务；无事件触发线与默认启动，供 startManually 外部干预）
+    }
+
+    /**
+     * 接线登记分片 2（15 条；分片注册防单方法字节码超限）
+     */
+    private void registerWiringShard2(GromaTriggerTable table) {
         // 手动启动点：「读取文本内容」（类型 文件服务；无事件触发线与默认启动，供 startManually 外部干预）
         // 手动启动点：「降雨」（类型 降雨；无事件触发线与默认启动，供 startManually 外部干预）
         // 手动启动点：「降雨」（类型 降雨与受影响区域；无事件触发线与默认启动，供 startManually 外部干预）

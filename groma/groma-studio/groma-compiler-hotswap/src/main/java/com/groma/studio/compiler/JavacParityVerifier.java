@@ -15,6 +15,8 @@ import javax.tools.ToolProvider;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.stream.Stream;
 
 /**
  * 标准 JDK javac 交叉编译验证器（落实 CK-NP-BLD-001-2 & BE-CFG-002：自动读取当前进程 classpath，零硬编码路径）
@@ -131,11 +134,12 @@ public final class JavacParityVerifier {
     }
 
     /**
-     * javac 对拍 classpath（code5.html 3.5 收割，闭环 13.4 挂账）：
+     * javac 对拍 classpath（code5/7 轮收割，闭环 13.4 挂账）：
      * 源码树/CI 形态 = 进程 {@code java.class.path}（零写死，BE-CMP-002 原语义）；
-     * Spring Boot fat jar 形态 = 追加本 jar 的 {@code BOOT-INF/classes} 与 {@code BOOT-INF/lib/*.jar}
-     * （嵌套依赖不在 java.class.path，原实现对拍恒失败——真机轮 13.4 第 3 项实证）。
-     * jar 内条目经 {@code jar:file:…!/…} URL 直接喂 javac，不解包落盘。
+     * Spring Boot fat jar 形态 = 解包 {@code BOOT-INF/classes} 与 {@code BOOT-INF/lib/*.jar}
+     * 到临时缓存目录后拼真实文件路径——嵌套 jar 的 {@code jar:file:…!/…} URL javac 的
+     * StandardJavaFileManager 无法解析（真机冒烟 102 条错实证），必须落成真实文件。
+     * 缓存键 = 本 jar 的绝对路径 + 大小 + 修改时间（jar 变更自动失效重建）。
      */
     static String verificationClasspath() {
         String base = System.getProperty("java.class.path", "");
@@ -143,33 +147,77 @@ public final class JavacParityVerifier {
         if (selfJar == null) {
             return base;
         }
-        StringBuilder cp = new StringBuilder(base);
-        try (java.util.jar.JarFile jar = new java.util.jar.JarFile(selfJar.toFile())) {
-            if (jar.getJarEntry("BOOT-INF/classes/") != null) {
-                cp.append(java.io.File.pathSeparatorChar)
-                        .append(selfJar.toUri() + "!/BOOT-INF/classes");
+        try {
+            java.nio.file.Path cache = java.nio.file.Path.of(
+                    System.getProperty("java.io.tmpdir"), "groma-javac-parity",
+                    String.valueOf(java.util.Objects.hash(selfJar.toAbsolutePath(), Files.size(selfJar),
+                            Files.getLastModifiedTime(selfJar).toMillis())));
+            java.nio.file.Path marker = cache.resolve(".complete");
+            if (!Files.isRegularFile(marker)) {
+                unpackBootInf(selfJar, cache);
+                Files.createFile(marker);
             }
-            java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                String name = entries.nextElement().getName();
-                if (name.startsWith("BOOT-INF/lib/") && name.endsWith(".jar")) {
-                    cp.append(java.io.File.pathSeparatorChar)
-                            .append(selfJar.toUri() + "!/" + name);
+            StringBuilder cp = new StringBuilder(base);
+            String classes = cache.resolve("classes").toString();
+            if (Files.isDirectory(java.nio.file.Path.of(classes))) {
+                cp.append(java.io.File.pathSeparatorChar).append(classes);
+            }
+            java.nio.file.Path libs = cache.resolve("libs");
+            if (Files.isDirectory(libs)) {
+                try (Stream<Path> jars = Files.list(libs)) {
+                    jars.filter(p -> p.toString().endsWith(".jar")).sorted()
+                            .forEach(j -> cp.append(java.io.File.pathSeparatorChar).append(j));
                 }
             }
+            return cp.toString();
         } catch (java.io.IOException ex) {
-            // 非可执行 jar 或读取失败：退回原语义（java.class.path）
+            // 解包失败退回原语义（java.class.path）——ECJ 仍是运行态编译门禁
             return base;
         }
-        return cp.toString();
     }
 
-    /** 定位当前进程的可执行 fat jar（IDE/exploded 形态返回 null 走原语义） */
+    /** 解包 fat jar 的 BOOT-INF/classes 与 BOOT-INF/lib/*.jar 到缓存目录 */
+    private static void unpackBootInf(java.nio.file.Path selfJar, java.nio.file.Path cache) throws java.io.IOException {
+        try (java.util.jar.JarFile jar = new java.util.jar.JarFile(selfJar.toFile())) {
+            java.util.Enumeration<java.util.jar.JarEntry> entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                java.util.jar.JarEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (name.startsWith("BOOT-INF/lib/") && name.endsWith(".jar")) {
+                    java.nio.file.Path lib = cache.resolve("libs").resolve(name.substring("BOOT-INF/lib/".length()));
+                    Files.createDirectories(lib.getParent());
+                    Files.copy(jar.getInputStream(entry), lib, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                } else if (name.startsWith("BOOT-INF/classes/") && !entry.isDirectory()) {
+                    java.nio.file.Path target = cache.resolve("classes").resolve(name.substring("BOOT-INF/classes/".length()));
+                    Files.createDirectories(target.getParent());
+                    Files.copy(jar.getInputStream(entry), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+    /** 定位当前进程的可执行 fat jar（IDE/exploded 运行为 null 走原语义）。
+     *  Spring Boot 启动器的 CodeSource 是嵌套 URI（jar:file:app.jar!/BOOT-INF/classes!/），
+     *  Path.of 会抛异常——按 "!/" 切出主 jar 真实路径（真机冒烟实证）。 */
     private static java.nio.file.Path selfExecutableJar() {
         try {
             java.security.ProtectionDomain domain = JavacParityVerifier.class.getProtectionDomain();
             java.security.CodeSource source = domain.getCodeSource();
             if (source == null || source.getLocation() == null) {
+                return null;
+            }
+            String uri = source.getLocation().toString();
+            if (uri.contains("!/")) {
+                // Spring Boot 2.x: jar:file:app.jar!/…；3.x(LaunchedURLClassLoader): jar:nested:app.jar/!…——正则统一取主 jar 路径
+                var matcher = java.util.regex.Pattern
+                        .compile("^(?:jar:)?(?:file:)?(?:nested:)?(.+?\\.jar)").matcher(uri);
+                if (!matcher.find()) {
+                    return null;
+                }
+                java.nio.file.Path path = java.nio.file.Path.of(matcher.group(1));
+                if (java.nio.file.Files.isRegularFile(path)) {
+                    return path;
+                }
                 return null;
             }
             java.nio.file.Path path = java.nio.file.Path.of(source.getLocation().toURI());
