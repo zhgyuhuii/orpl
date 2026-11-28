@@ -652,3 +652,36 @@ localhost WS——getproxies 读系统配置，须显式 proxy=None）。
 
 - 关闭：H4/Tier1（安全鉴别器落地，EnumIR 加字段与其余 13 处调用点接线仍挂账——收益递减：语料 encode 全自动码）、12.4 E6（全角归一化落地）、13.4 第 3 项（fat jar 对拍代码落地，运行态复验挂账）。
 - 新增挂账（code5 方案为参考）：Python 常驻进程池 + WAITING_EXTERNAL_IO 状态机（真问题，涉会话推进协议）；debug-server 接 setDebugProbe（行级断点最后一公里）；R07 parser 物化+出码；RepoModelsSyncService 临时沙盒聚合形态；Lazy-Mounted Pod；千模型容量实测。
+
+## 十五、code6.html（Gemini 第六轮存档）核实与收割（2026-11-28 第十一轮）
+
+> 输入：`docs/code6.html`（2.8MB）——基于 `_groma_export/*.txt` **早期导出快照**的"从零重写型"报告
+> （8 项审计清单 + 7 项架构师剖析 + 6 组全量重写代码）。因快照过时，断言需逐条对当前仓库实证。
+
+### 15.1 断言核查矩阵
+
+| code6 断言 | 判定 | 实证 |
+|---|---|---|
+| 子模块缺 service/relation/repository/dto/ws/utils 层 | ❌ 全部过时 | 快照早于 M6 收割轮；当前生成物五层俱全（AreaEntity→repository/ws/dto 均在） |
+| R08 关联类型缺失（5 个 ASSOCIATION-TYPE 降级为普通 Entity） | ❌ 不属实 | 5 个 *RelationManager 全部出码（SuspensionControl/UndergroundInflow/TrainPassing/FloodProtection/RainfallCatchment） |
+| 父图外挂边丢失→16 个空壳 Task（转换为无积水状态 designView 为空） | ❌ **误读** | 该过程是 TEMPLATE-PROCESS 模板声明型（空壳是设计语义）；其 out-change 已正确下沉到**调用方**积水变化 Task 的 nodeDone pc=3/4（`输出转换：本对象.积水状态 → 无积水/积水` 生成实证） |
+| 瞬时算子跨步撕裂破坏守恒 | ❌ 不属实 | 瞬时过程 startTopLevel→runToCompletionSync 同栈同步执行（spawnOrRun syncMode），无跨步窗口 |
+| RuntimeBO 重名 *2/*3（WaterloggingChangeRuntimeBO2/3） | ✅ 属实 | 消歧序号是可读性缺陷（@GromaMeta 原名+索引兜底）——**挂账**（修复会全量漂移生成物） |
+| "场景1"+"1转换为停站"→Scene11ConvertToStop 歧义类名 | ✅ 属实 | 命名美学缺陷——**挂账**（同上） |
+| Runtime 类 71KB/ProcessCatalog 52KB，C2 8000B 退出 JIT、64KB 方法上限 | ✅ 数字属实 | 模型3（3000 实体）Runtime 72KB/ProcessCatalog 58KB；当前未爆但千站点模型必撞 64KB 单方法上限——**收割 C6 分片注册** |
+| 手写 AST 转译缺失 | ❌ 过时 | ProcessCodeAstTranslator 四类桥+全角归一化已落地（13/14 轮） |
+| WS MsgPack 差量帧/GromaTimeSystem 冻结补偿/ASM 断点缺失 | ✅ 挂账确认 | 与 13.3/14.3 挂账一致（TD 涉前端协议、DAP 行级挂账） |
+| 瞬时算子协程化滥用/时间染色 COROUTINE_TASK | ⚠️ 优化方向非缺陷 | 状态机统一语义是存档/调试/追踪一致性的既定取舍；染色编译为同步方法是架构级演进——挂账 |
+| SnapshotVO 全量拷贝 vs Dirty CoW / 四态会话生命周期 / SQL 方言重写器 | ⚠️ 挂账 | 优化项（3 万实体级才显著）/架构演进/connector 大改，均挂账 |
+| 底座缺 GlobalSimExceptionHandler/PageResult 重复等 | ❌ 过时 | 快照过时；全部存在 |
+
+### 15.2 收割清单（C6）
+
+| # | 内容 | 裁判 |
+|---|---|---|
+| C6 | **分片注册（Sharded Registrar）**：① ModuleRuntime ctor 按 SHARD_SIZE=16 条接线一片拆 `registerWiringShard_K`（单条登记逻辑原样搬移 emitWiringRegistration）；② ProcessCatalog newTask 巨型 switch 拆 `newTaskShard_K`（主方法顺序探测）；③ PROCESSES/TYPES 描述符 `<clinit>` 巨表达式拆 `processDescriptorShard_K`/`typeDescriptorShard_K` + 聚合方法 | 三语料 ECJ 编译+运行回归绿；生成物结构核验（Runtime 6 片/Catalog 22 分片/单片 34 行）；每方法字节码恒 <2KB 量级，任意规模模型不再逼近 64KB 上限 |
+
+### 15.3 挂账更新
+
+- 新增挂账：BO 消歧宿主前缀化与数字开头中文序号词命名修正（全量漂移需专项回归）、时间染色同步算子编译（生成器架构演进）、Dirty CoW 快照、四态会话生命周期（IDLE_PARKED/WAITING_ASYNC_IO）、MultiDialectSqlNormalizer。
+- 维持挂账：TD 差量帧、行级 DAP、Python 进程池、R07 出码物化、千模型实测、ods 进程级 diff、M5~M8。

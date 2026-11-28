@@ -145,6 +145,87 @@ public final class ModuleRuntimeEmitter {
         return model.manualStarts.get(seq - model.defaultStarts.size() - model.triggers.size() - 1);
     }
 
+    /** 单条接线的登记语句（分片方法体复用；原 ctor 循环体原样搬移） */
+    private void emitWiringRegistration(MethodSpec.Builder body, Wiring wiring) {
+        ProcInfo target = model.procs.get(wiring.targetDefKey());
+        TypeInfo contextType = model.types.get(wiring.typeId());
+        if (target == null) {
+            model.diagnostic("接线目标过程未注册: " + wiring.targetDefKey());
+            return;
+        }
+        if (contextType == null) {
+            model.diagnostic("接线所属类型未知: " + wiring.typeId());
+            return;
+        }
+        if (wiring.manual()) {
+            ManualStartIR manual = manualOf(wiring.seq());
+            TypeInfo manualType = model.types.get(wiring.typeId());
+            body.addCode("// 手动启动点：「$L」（类型 $L；无事件触发线与默认启动，供 startManually 外部干预）\n",
+                    target.zhName(), manualType == null ? wiring.typeId() : manualType.zhName());
+        } else if (wiring.defaultStart()) {
+            DefaultStartIR start = defaultStartOf(wiring.seq());
+            body.addCode("// 默认启动：$L 创建后启动「$L」\n", contextType.zhName(), target.zhName());
+            body.addStatement("table.onDefaultStart($S, $L, this::start$L, $S)", contextType.code(),
+                    listOf(start.hostPath()), wiring.seq(), target.zhName());
+        } else if (!wiring.exceptionExitCode().isEmpty()) {
+            // R25/R26 过程级异常流（code4.html M5 收割）：监听过程自身 pcd/pca（事件源=宿主，
+            // 成员令牌=父过程定义键）拉起补偿过程；节点级（sourcePc>=0）由 ProcessTaskEmitter 路由
+            TypeInfo sourceType = model.types.get(wiring.typeId());
+            ProcInfo parent = model.procs.get(wiring.sourceDefKey());
+            if (target.owner() != null && parent != null && target.owner() != parent.owner()) {
+                model.diagnostic("过程级异常流补偿过程「" + target.zhName() + "」的宿主类型与被监控过程"
+                        + "「" + parent.zhName() + "」不一致，已跳过（宿主实参无法安全转型）");
+                return;
+            }
+            body.addCode("// 过程级异常流：「$L」自身 $L → 启动补偿过程「$L」\n",
+                    parent == null ? wiring.sourceDefKey() : parent.zhName(),
+                    wiring.exceptionExitCode(), target.zhName());
+            body.addStatement("table.onEvent($S, $S, $S, $S, null, $L, $L, this::start$L, $S)",
+                    sourceType == null ? "" : sourceType.code(), wiring.sourceDefKey(),
+                    wiring.exceptionExitCode(), "", List.of(), List.of(), wiring.seq(), target.zhName());
+        } else {
+            TriggerIR trigger = triggerOf(wiring.seq());
+            TypeInfo sourceType = model.types.get(trigger.sourceTypeId());
+            String sourceCode = sourceType == null ? "" : sourceType.code();
+            if (sourceType == null) {
+                model.diagnostic("事件接线的源对象类型未知: " + trigger.describe());
+            }
+            body.addCode("// $L：$L.$L [$L] →「$L」\n",
+                    trigger.describe().replaceAll("\\s*\\r?\\n\\s*", " ").replace("$", "＄"),
+                    sourceType == null ? "?" : sourceType.zhName(),
+                    model.memberZhName(trigger.memberToken()), trigger.eventCode(), target.zhName());
+            // 触发概率（标准 10.4，方案 D 收割）：0<p<1 的触发线按伯努利门控（任务级确定性随机流）；
+            // 互斥概率组跨触发线的 CDF 采样需要共享随机预算，语料未出现，遇组名记诊断降级
+            CodeBlock starter = CodeBlock.of("this::start$L", wiring.seq());
+            if (trigger.probability() > 0.0D && trigger.probability() < 0.9999D) {
+                if (!trigger.probabilityGroup().isEmpty()) {
+                    model.diagnostic("触发线概率组 " + trigger.probabilityGroup() + "（" + trigger.describe()
+                            + "）暂不支持跨线互斥采样，已按独立伯努利处理");
+                }
+                starter = CodeBlock.of("(c2, ctxE, hostE) -> {"
+                        + " if (c2.randomStream().nextDouble() < $L) { start$L(c2, ctxE, hostE); } }",
+                        String.valueOf(trigger.probability()), wiring.seq());
+            }
+            body.addStatement("table.onEvent($S, $S, $S, $S, $L, $L, $L, $L, $S)", sourceCode,
+                    trigger.memberToken(), trigger.eventCode(), nvl(trigger.stateLabel()),
+                    trigger.judge().isEmpty() ? CodeBlock.of("null")
+                            : CodeBlock.of("$T::judge$L", model.conditionJudge, wiring.seq()),
+                    listOf(trigger.contextPath()), listOf(trigger.hostPath()), starter, target.zhName());
+        }
+    }
+
+    /** 分片大小（防 JVM 64KB 单方法字节码上限；每片接线/描述符/case 数量恒定） */
+    private static final int SHARD_SIZE = 16;
+
+    /** 顺序分桶：n 个元素切成 ceil(n/SHARD_SIZE) 个连续桶 */
+    private static <T> List<List<T>> partition(List<T> items, int size) {
+        List<List<T>> shards = new ArrayList<>();
+        for (int i = 0; i < items.size(); i += size) {
+            shards.add(items.subList(i, Math.min(i + size, items.size())));
+        }
+        return shards;
+    }
+
     // ------------------------------------------------------------------ 运行时入口
 
     public JavaFile emitRuntime() {
@@ -165,75 +246,23 @@ public final class ModuleRuntimeEmitter {
         rb.addField(FieldSpec.builder(PlanModel.TRIGGER_TABLE, "triggerTable", Modifier.PRIVATE, Modifier.FINAL)
                 .initializer("new $T()", PlanModel.TRIGGER_TABLE).build());
 
-        // 构造：登记全部接线
+        // 构造：登记全部接线（code6.html 分片注册收割：巨型 ctor 在千站点模型上会逼近
+        // JVM 64KB 单方法字节码上限触发 ClassFormatError——按 SHARD_SIZE 条接线一片
+        // 拆为 registerWiringShard_K 私有方法，ctor 只保留逐片调用）
         MethodSpec.Builder ctor = MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC)
                 .addStatement("$T table = this.triggerTable", PlanModel.TRIGGER_TABLE);
-        for (Wiring wiring : wirings) {
-            ProcInfo target = model.procs.get(wiring.targetDefKey());
-            TypeInfo contextType = model.types.get(wiring.typeId());
-            if (target == null) {
-                model.diagnostic("接线目标过程未注册: " + wiring.targetDefKey());
-                continue;
+        List<List<Wiring>> wiringShards = partition(wirings, SHARD_SIZE);
+        for (int shard = 0; shard < wiringShards.size(); shard++) {
+            MethodSpec.Builder register = MethodSpec.methodBuilder("registerWiringShard" + shard)
+                    .addModifiers(Modifier.PRIVATE)
+                    .addJavadoc("接线登记分片 $L（$L 条；分片注册防单方法字节码超限）\n",
+                            shard, wiringShards.get(shard).size())
+                    .addParameter(PlanModel.TRIGGER_TABLE, "table");
+            for (Wiring wiring : wiringShards.get(shard)) {
+                emitWiringRegistration(register, wiring);
             }
-            if (contextType == null) {
-                model.diagnostic("接线所属类型未知: " + wiring.typeId());
-                continue;
-            }
-            if (wiring.manual()) {
-                ManualStartIR manual = manualOf(wiring.seq());
-                TypeInfo manualType = model.types.get(wiring.typeId());
-                ctor.addCode("// 手动启动点：「$L」（类型 $L；无事件触发线与默认启动，供 startManually 外部干预）\n",
-                        target.zhName(), manualType == null ? wiring.typeId() : manualType.zhName());
-            } else if (wiring.defaultStart()) {
-                DefaultStartIR start = defaultStartOf(wiring.seq());
-                ctor.addCode("// 默认启动：$L 创建后启动「$L」\n", contextType.zhName(), target.zhName());
-                ctor.addStatement("table.onDefaultStart($S, $L, this::start$L, $S)", contextType.code(),
-                        listOf(start.hostPath()), wiring.seq(), target.zhName());
-            } else if (!wiring.exceptionExitCode().isEmpty()) {
-                // R25/R26 过程级异常流（code4.html M5 收割）：监听过程自身 pcd/pca（事件源=宿主，
-                // 成员令牌=父过程定义键）拉起补偿过程；节点级（sourcePc>=0）由 ProcessTaskEmitter 路由
-                TypeInfo sourceType = model.types.get(wiring.typeId());
-                ProcInfo parent = model.procs.get(wiring.sourceDefKey());
-                if (target.owner() != null && parent != null && target.owner() != parent.owner()) {
-                    model.diagnostic("过程级异常流补偿过程「" + target.zhName() + "」的宿主类型与被监控过程"
-                            + "「" + parent.zhName() + "」不一致，已跳过（宿主实参无法安全转型）");
-                    continue;
-                }
-                ctor.addCode("// 过程级异常流：「$L」自身 $L → 启动补偿过程「$L」\n",
-                        parent == null ? wiring.sourceDefKey() : parent.zhName(),
-                        wiring.exceptionExitCode(), target.zhName());
-                ctor.addStatement("table.onEvent($S, $S, $S, $S, null, $L, $L, this::start$L, $S)",
-                        sourceType == null ? "" : sourceType.code(), wiring.sourceDefKey(),
-                        wiring.exceptionExitCode(), "", List.of(), List.of(), wiring.seq(), target.zhName());
-            } else {
-                TriggerIR trigger = triggerOf(wiring.seq());
-                TypeInfo sourceType = model.types.get(trigger.sourceTypeId());
-                String sourceCode = sourceType == null ? "" : sourceType.code();
-                if (sourceType == null) {
-                    model.diagnostic("事件接线的源对象类型未知: " + trigger.describe());
-                }
-                ctor.addCode("// $L：$L.$L [$L] →「$L」\n",
-                        trigger.describe().replaceAll("\\s*\\r?\\n\\s*", " ").replace("$", "＄"),
-                        sourceType == null ? "?" : sourceType.zhName(),
-                        model.memberZhName(trigger.memberToken()), trigger.eventCode(), target.zhName());
-                // 触发概率（标准 10.4，方案 D 收割）：0<p<1 的触发线按伯努利门控（任务级确定性随机流）；
-                // 互斥概率组跨触发线的 CDF 采样需要共享随机预算，语料未出现，遇组名记诊断降级
-                CodeBlock starter = CodeBlock.of("this::start$L", wiring.seq());
-                if (trigger.probability() > 0.0D && trigger.probability() < 0.9999D) {
-                    if (!trigger.probabilityGroup().isEmpty()) {
-                        model.diagnostic("触发线概率组 " + trigger.probabilityGroup() + "（" + trigger.describe()
-                                + "）暂不支持跨线互斥采样，已按独立伯努利处理");
-                    }
-                    starter = CodeBlock.of("(c2, ctxE, hostE) -> {"
-                            + " if (c2.randomStream().nextDouble() < $L) { start$L(c2, ctxE, hostE); } }",
-                            String.valueOf(trigger.probability()), wiring.seq());
-                }
-                ctor.addStatement("table.onEvent($S, $S, $S, $S, $L, $L, $L, $L, $S)", sourceCode,
-                        trigger.memberToken(), trigger.eventCode(), nvl(trigger.stateLabel()),
-                        trigger.judge().isEmpty() ? CodeBlock.of("null")
-                                : CodeBlock.of("$T::judge$L", model.conditionJudge, wiring.seq()),
-                        listOf(trigger.contextPath()), listOf(trigger.hostPath()), starter, target.zhName());
-            }
+            rb.addMethod(register.build());
+            ctor.addStatement("registerWiringShard$L(table)", shard);
         }
         rb.addMethod(ctor.build());
 
@@ -608,24 +637,57 @@ public final class ModuleRuntimeEmitter {
         TypeSpec.Builder cb = TypeSpec.classBuilder(cn).addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addJavadoc("过程目录：按过程定义键新建过程任务；形参以中文原名传值（外部干预、MCP 无会话执行、存档续跑共用）\n")
                 .addMethod(MethodSpec.constructorBuilder().addModifiers(Modifier.PRIVATE).build());
+        // 描述符分片（code6.html 收割）：巨型 <clinit> 表达式同样受 64KB 单方法字节码上限约束，
+        // 按 SHARD_SIZE 条一片生成 processDescriptorShard_K/typeDescriptorShard_K，聚合方法拼接
+        List<List<ProcInfo>> procShards = partition(model.procList, SHARD_SIZE);
+        List<List<java.util.Map.Entry<String, TypeInfo>>> typeShards =
+                partition(new ArrayList<>(model.types.entrySet()), SHARD_SIZE);
+        for (int shard = 0; shard < procShards.size(); shard++) {
+            cb.addMethod(descriptorShardMethod("processDescriptorShard" + shard, procShards.get(shard)));
+        }
+        for (int shard = 0; shard < typeShards.size(); shard++) {
+            cb.addMethod(typeDescriptorShardMethod("typeDescriptorShard" + shard, typeShards.get(shard)));
+        }
+        cb.addMethod(aggregateMethod("buildProcesses", "processDescriptorShard", procShards.size(),
+                ParameterizedTypeName.get(ClassName.get(List.class), PROCESS_DESCRIPTOR)));
+        cb.addMethod(aggregateMethod("buildTypes", "typeDescriptorShard", typeShards.size(),
+                ParameterizedTypeName.get(ClassName.get(List.class), TYPE_DESCRIPTOR)));
         cb.addField(FieldSpec.builder(PlanModel.listOf(PROCESS_DESCRIPTOR), "PROCESSES",
-                Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).initializer(procDescriptors()).build());
+                Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).initializer("buildProcesses()").build());
         cb.addField(FieldSpec.builder(PlanModel.listOf(TYPE_DESCRIPTOR), "TYPES",
-                Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).initializer(typeDescriptors()).build());
+                Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL).initializer("buildTypes()").build());
 
+        // newTask 分片：switch 按桶拆为 newTaskShard_K，主方法顺序探测（防巨型 switch 方法超限）
+        List<List<ProcInfo>> taskShards = partition(model.procList, SHARD_SIZE);
+        for (int shard = 0; shard < taskShards.size(); shard++) {
+            MethodSpec.Builder taskShard = MethodSpec.methodBuilder("newTaskShard" + shard)
+                    .addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                    .addJavadoc("过程任务构造分片 $L（$L 条）\n", shard, taskShards.get(shard).size())
+                    .returns(PlanModel.PROCESS_TASK).addParameter(String.class, "defKey")
+                    .addParameter(PlanModel.WORLD_CTX, "ctx").addParameter(PlanModel.BASE_ENTITY, "host")
+                    .addParameter(MAP_OF_OBJECTS, "args");
+            taskShard.beginControlFlow("switch (defKey)");
+            for (ProcInfo proc : taskShards.get(shard)) {
+                taskShard.beginControlFlow("case $S ->", proc.defKey());
+                taskShard.addStatement("return $L", constructTask(proc));
+                taskShard.endControlFlow();
+            }
+            taskShard.addCode("default -> { return null; }\n");
+            taskShard.endControlFlow();
+            cb.addMethod(taskShard.build());
+        }
         MethodSpec.Builder newTask = MethodSpec.methodBuilder("newTask").addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                 .addJavadoc("按过程定义键新建过程任务（未注册的键返回 null）\n")
                 .returns(PlanModel.PROCESS_TASK).addParameter(String.class, "defKey")
                 .addParameter(PlanModel.WORLD_CTX, "ctx").addParameter(PlanModel.BASE_ENTITY, "host")
                 .addParameter(MAP_OF_OBJECTS, "args");
-        newTask.beginControlFlow("switch (defKey)");
-        for (ProcInfo proc : model.procList) {
-            newTask.beginControlFlow("case $S ->", proc.defKey());
-            newTask.addStatement("return $L", constructTask(proc));
+        for (int shard = 0; shard < taskShards.size(); shard++) {
+            newTask.addStatement("$T t$L = newTaskShard$L(defKey, ctx, host, args)", PlanModel.PROCESS_TASK, shard, shard);
+            newTask.beginControlFlow("if (t$L != null)", shard);
+            newTask.addStatement("return t$L", shard);
             newTask.endControlFlow();
         }
-        newTask.addCode("default -> { return null; }\n");
-        newTask.endControlFlow();
+        newTask.addStatement("return null");
         cb.addMethod(newTask.build());
         for (MethodSpec helper : List.of(numberArg("d", TypeName.DOUBLE, "0.0D", "toDouble"),
                 numberArg("l", TypeName.LONG, "0L", "toLong"))) {
@@ -678,10 +740,11 @@ public final class ModuleRuntimeEmitter {
         return call.add(")").build();
     }
 
-    private CodeBlock procDescriptors() {
+    /** 过程描述符分片方法：返回本片（≤SHARD_SIZE 条）描述符列表 */
+    private MethodSpec descriptorShardMethod(String name, List<ProcInfo> procs) {
         CodeBlock.Builder cb = CodeBlock.builder().add("$T.of(", List.class);
         boolean first = true;
-        for (ProcInfo proc : model.procList) {
+        for (ProcInfo proc : procs) {
             String description = nvl(proc.def().description()).replace("$", "＄");
             cb.add(first ? "" : ", ").add("new $T($S, $S, $S, $S, $S, $S, $L, $S)", PROCESS_DESCRIPTOR, proc.defKey(),
                     proc.def().entityId(), proc.zhName(), proc.owner() == null ? "" : proc.owner().code(),
@@ -689,18 +752,40 @@ public final class ModuleRuntimeEmitter {
                     proc.timeConsuming() ? "耗时过程" : "瞬时算子", proc.timeConsuming(), description);
             first = false;
         }
-        return cb.add(")").build();
+        cb.add(")");
+        return MethodSpec.methodBuilder(name).addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addJavadoc("过程描述符分片（$L 条）\n", procs.size())
+                .returns(ParameterizedTypeName.get(ClassName.get(List.class), PROCESS_DESCRIPTOR))
+                .addStatement("return $L", cb.build()).build();
     }
 
-    private CodeBlock typeDescriptors() {
+    /** 类型描述符分片方法 */
+    private MethodSpec typeDescriptorShardMethod(String name, List<java.util.Map.Entry<String, TypeInfo>> entries) {
         CodeBlock.Builder cb = CodeBlock.builder().add("$T.of(", List.class);
         boolean first = true;
-        for (TypeInfo type : model.types.values()) {
+        for (java.util.Map.Entry<String, TypeInfo> entry : entries) {
+            TypeInfo type = entry.getValue();
             cb.add(first ? "" : ", ").add("new $T($S, $S, $S, $L)", TYPE_DESCRIPTOR, type.code(), type.zhName(),
                     type.typeId(), memberMetaList(type));
             first = false;
         }
-        return cb.add(")").build();
+        cb.add(")");
+        return MethodSpec.methodBuilder(name).addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addJavadoc("类型描述符分片（$L 条）\n", entries.size())
+                .returns(ParameterizedTypeName.get(ClassName.get(List.class), TYPE_DESCRIPTOR))
+                .addStatement("return $L", cb.build()).build();
+    }
+
+    /** 分片聚合方法：顺序拼接各分片结果（分片注册防 <clinit> 与聚合方法自身超限） */
+    private MethodSpec aggregateMethod(String name, String shardPrefix, int shardCount, TypeName listType) {
+        MethodSpec.Builder mb = MethodSpec.methodBuilder(name).addModifiers(Modifier.PRIVATE, Modifier.STATIC)
+                .addJavadoc("全量描述符聚合（$L 片拼接）\n", shardCount).returns(listType);
+        mb.addStatement("$T all = new $T<>()", listType, ClassName.get(ArrayList.class));
+        for (int shard = 0; shard < shardCount; shard++) {
+            mb.addStatement("all.addAll($L$L())", shardPrefix, shard);
+        }
+        mb.addStatement("return $T.copyOf(all)", List.class);
+        return mb.build();
     }
 
     private CodeBlock memberMetaList(TypeInfo type) {
