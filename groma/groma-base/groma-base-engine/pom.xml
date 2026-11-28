@@ -16,6 +16,11 @@
             <artifactId>groma-base-common</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- 存量手写代码集合序列化习惯调用 .itemsToNJson() 的 BuiltinTools 桥（code4.html E6 收割） -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>

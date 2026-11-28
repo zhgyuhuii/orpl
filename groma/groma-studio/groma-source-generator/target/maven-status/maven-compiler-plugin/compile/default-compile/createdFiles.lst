@@ -7,6 +7,7 @@ com/groma/studio/codegen/plan/LeafBodyEmitter.class
 com/groma/studio/codegen/plan/PlanModel$InstanceInfo.class
 com/groma/studio/codegen/plan/PlanModel$ProcInfo.class
 com/groma/studio/codegen/plan/ProcessTaskEmitter$TaskScope.class
+com/groma/studio/codegen/plan/ModelVersionHashUtil.class
 com/groma/studio/codegen/plan/PlanModel$ParamSlot.class
 com/groma/studio/codegen/ProcessCodeAstTranslator$TranslationResult.class
 com/groma/studio/codegen/plan/OperandRenderer$Value.class
@@ -18,6 +19,7 @@ com/groma/studio/codegen/plan/LeafBodyEmitter$Outcome.class
 com/groma/studio/codegen/plan/PlanModel$SceneInfo.class
 com/groma/studio/codegen/plan/ModuleRuntimeEmitter.class
 com/groma/studio/codegen/plan/ToolSemantics.class
+com/groma/studio/codegen/plan/DtoWsRepositoryLayerEmitter.class
 com/groma/studio/codegen/plan/ProcessTaskEmitter$1Slot.class
 com/groma/studio/codegen/plan/PlanModel.class
 com/groma/studio/codegen/plan/ModuleRuntimeEmitter$Wiring.class

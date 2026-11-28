@@ -285,6 +285,23 @@ public final class ProcessTaskEmitter {
                             rule.describe(), String.valueOf(rule.expression()));
                 }
             }
+            // R13/R15 前锚点（code4.html M5 收割，说明书 7.2 R13 行"首次步进前切换"）：
+            // 全部启动条件通过后，把条件成员切换到目标状态（生成 setter-with-events → sx/sv/sa 事件链）
+            for (CompilePlanIR.ConditionRuleIR rule : starts) {
+                if (rule.anchorTargetState() == null || rule.anchorTargetState().isBlank()
+                        || rule.anchorMember() == null) {
+                    continue;
+                }
+                EnumInfo info = model.enums.get(rule.anchorEnumTypeId());
+                String constant = info == null ? null : info.constantOf(rule.anchorTargetState());
+                if (constant == null) {
+                    model.diagnostic("过程 " + proc.zhName() + " 前锚点目标状态 " + rule.anchorTargetState()
+                            + " 不在枚举里或枚举未知，已跳过切换");
+                    continue;
+                }
+                mb.addCode("// 前锚点切换（启动即离开源状态）：$L → $L\n", rule.describe(), rule.anchorTargetState());
+                mb.addStatement("$L", condScope.assign(rule.anchorMember(), enumValue(info, constant)));
+            }
         }
         mb.addStatement("return true");
         return mb.build();

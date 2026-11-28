@@ -171,7 +171,25 @@ public class GromaWebSocketConfiguration {
                 closeQuietly(session, "ERR:LIMIT_EXCEEDED: 会话不存在或订阅端已满");
                 return;
             }
-            session.addMessageHandler((MessageHandler.Whole<String>) raw -> {
+            // 必须用具名类注册消息处理器：Tomcat 11 经反射读取泛型签名解析消息类型，
+            // lambda 强转 MessageHandler.Whole<String> 无泛型信息 → onOpen 即抛 IllegalStateException，
+            // 任何真实 WS 客户端都会被立即掐断（真机轮实证，code4.html 收割轮修复）
+            session.addMessageHandler(new SituationTextHandler(session, simSessionId));
+        }
+
+        /** 具名文本帧处理器：控制信令回执 + 态势快照广播 */
+        private final class SituationTextHandler implements MessageHandler.Whole<String> {
+
+            private final Session session;
+            private final String simSessionId;
+
+            SituationTextHandler(Session session, String simSessionId) {
+                this.session = session;
+                this.simSessionId = simSessionId;
+            }
+
+            @Override
+            public void onMessage(String raw) {
                 String reply = dispatcher.dispatch(simSessionId, raw);
                 try {
                     session.getBasicRemote().sendText(reply);
@@ -183,7 +201,7 @@ public class GromaWebSocketConfiguration {
                 } catch (RuntimeException gone) {
                     LOG.debug("[WS] 会话 {} 广播跳过: {}", simSessionId, gone.getMessage());
                 }
-            });
+            }
         }
 
         @Override

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 模型级事件接线表（落实设计书第五章 R23 “对象事件触发直接编译进 WorldContext 事件接线逻辑”与 3.2 节三级启动链）
@@ -99,11 +100,25 @@ public final class GromaTriggerTable {
                         targetName == null ? "" : targetName));
     }
 
+    /** 被动事件码（标准 21 类事件中的反向/被动视角：个体进出集合与被建立/改向/解除指向） */
+    private static final Set<String> PASSIVE_EVENT_CODES =
+            Set.of("am", "xm", "ar", "vr", "xr");
+
     /**
-     * 派发一条对象事件，返回被触发启动的过程数
+     * 派发一条对象事件，返回被触发启动的过程数。
+     * <p>
+     * 被动事件通配兜底（code4.html M4 收割）：元素型被动事件（am/xm）以持有方集合成员令牌派发、
+     * 引用型被动事件（ar/vr/xr）以 "*" 类型级令牌派发；当目标类型视图以通配令牌订阅自身被动事件
+     * （注册键 {@code type|*|code}）而事件携带具体成员令牌时，精确键落空后按类型级通配键兜底匹配。
      */
     public int dispatch(GromaWorldContext ctx, BaseSimEntity source, WorldSnapshot.SimEventRecord event) {
         List<Trigger> triggers = index.get(source.getTypeCode() + "|" + event.memberToken() + "|" + event.eventCode());
+        if ((triggers == null || triggers.isEmpty())
+                && PASSIVE_EVENT_CODES.contains(event.eventCode())
+                && !"*".equals(event.memberToken())) {
+            // 类型级通配兜底：目标类型自身视图订阅的被动事件不携带成员键
+            triggers = index.get(source.getTypeCode() + "|*|" + event.eventCode());
+        }
         if (triggers == null || triggers.isEmpty()) {
             return 0;
         }

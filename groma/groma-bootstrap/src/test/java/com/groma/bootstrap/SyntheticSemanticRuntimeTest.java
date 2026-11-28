@@ -26,6 +26,9 @@ import java.util.Set;
  */
 class SyntheticSemanticRuntimeTest {
 
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger(SyntheticSemanticRuntimeTest.class);
+
     private static Path syntheticDir() throws Exception {
         return Path.of(SyntheticSemanticRuntimeTest.class.getClassLoader()
                 .getResource("synthetic/rm-c1-a.json").toURI()).getParent();
@@ -69,6 +72,7 @@ class SyntheticSemanticRuntimeTest {
             var summary = port.startSession(modelCode, null, Map.of(), 42L, false);
             String sid = summary.sessionId();
             java.util.List<WorldSnapshot.SimEventRecord> all = new java.util.ArrayList<>();
+            java.util.Set<Long> seenSeq = new java.util.HashSet<>();
             for (int i = 0; i < 40; i++) {
                 port.stepSession(sid, 1);
                 WorldSnapshot per = port.getImmutableSnapshot(sid);
@@ -77,12 +81,17 @@ class SyntheticSemanticRuntimeTest {
                             .flatMap(f2 -> f2.entrySet().stream())
                             .filter(e2 -> e2.getKey().toLowerCase().contains("shield") || e2.getKey().contains("护盾"))
                             .map(Map.Entry::getValue).findFirst().orElse("?");
-                    System.out.println("PER t=" + i + " tick=" + per.tickIndex() + " status=" + per.status()
-                            + " inst=" + per.instances().size() + " ev=" + per.recentEvents().size()
-                            + " shield=" + shield + " newEv=" + per.recentEvents().stream()
-                            .map(e2 -> e2.eventCode() + ":" + e2.stateLabel()).toList());
+                    LOG.debug("PER t={} tick={} status={} inst={} ev={} shield={} newEv={}",
+                            i, per.tickIndex(), per.status(), per.instances().size(), per.recentEvents().size(),
+                            shield, per.recentEvents().stream()
+                                    .map(e2 -> e2.eventCode() + ":" + e2.stateLabel()).toList());
                 }
-                all.addAll(per.recentEvents());
+                // recentEvents 是滚动审计窗口（跨拍保留），按 seq 去重避免同一事件跨拍重复计入
+                for (WorldSnapshot.SimEventRecord rec : per.recentEvents()) {
+                    if (seenSeq.add(rec.seq())) {
+                        all.add(rec);
+                    }
+                }
             }
             WorldSnapshot snap = port.getImmutableSnapshot(sid);
             List<WorldSnapshot.SimEventRecord> events = all;

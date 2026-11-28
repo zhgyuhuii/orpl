@@ -27,7 +27,9 @@ public class StudioWorkspaceExportController {
     }
 
     @GetMapping("/export-zip")
-    public void exportZip(@RequestParam("models") String models, HttpServletResponse response) throws IOException {
+    public void exportZip(@RequestParam("models") String models,
+                          @RequestParam(value = "flavor", defaultValue = "full") String flavor,
+                          HttpServletResponse response) throws IOException {
         if (models == null || models.isBlank()) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -40,7 +42,7 @@ public class StudioWorkspaceExportController {
                 .map(String::trim).filter(s -> !s.isEmpty()).toList();
         StudioWorkspaceExportService.ExportPlan plan;
         try {
-            plan = exportService.plan(modelList);
+            plan = exportService.plan(modelList, "runtime".equalsIgnoreCase(flavor));
         } catch (IllegalArgumentException badRequest) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);

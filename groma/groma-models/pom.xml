@@ -12,17 +12,20 @@
     <packaging>pom</packaging>
     <name>Groma Compiled Business Models</name>
 
+    <!-- 流水线生成模块的仓内合包槽位（code4.html E2 收割）：
+         模块目录由 ModelPipelineService 的 repo-models-root 同步写入（同步时自动重写本 modules 清单），
+         手写演示样例已迁至 examples-handwritten/（不占用主工程槽位）。
+         空清单 = 仓库尚未同步任何生成模型，直接 mvn clean package 时 groma-models 为纯聚合壳。 -->
     <profiles>
-        <!-- 默认模式一：多模型合包构建 -->
+        <!-- 模式一：多模型合包构建（模块清单由流水线同步维护） -->
         <profile>
             <id>multi-models-default</id>
             <activation>
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>model-emergency-deduction</module>
-                <module>model-smart-planning</module>
-            </modules>
+                <module>model-emergency-deduction-844676b1</module>
+                </modules>
         </profile>
 
         <!-- 模式二：单模型精简独立交付 (-Psingle-model -Dtarget.model=model-emergency-deduction) -->

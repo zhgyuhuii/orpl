@@ -145,6 +145,11 @@ public final class AbModelMergerAndParser {
         return "";
     }
 
+    /** 主键为空时取回退键（跨组件 inherits 数组新版用 entityId、旧版用 id） */
+    private static String orFallback(String primary, String fallback) {
+        return primary == null || primary.isBlank() ? (fallback == null ? "" : fallback) : primary;
+    }
+
     private static boolean flag(JsonNode node, String name) {
         JsonNode value = field(node, name);
         if (value == null || value.isNull()) {
@@ -791,8 +796,36 @@ public final class AbModelMergerAndParser {
                         continue;
                     }
                     String describe = lt + ":" + text(source, "label");
+                    // R13/R15 前锚点（code4.html M5 收割，说明书 7.2）：in-change/in-out 线的
+                    // target 端为 STATE 图元时，过程启动（条件全过、首次步进前）把该成员切换到
+                    // 目标状态（引擎 transitionTo → sx/sv/sa 事件链）
+                    String anchorTargetState = "";
+                    OperandIR anchorMember = null;
+                    String anchorEnumTypeId = "";
+                    if (inChange) {
+                        JsonNode targetStateCell = v.cell(text(target, "id"));
+                        JsonNode targetStateEntity = entities.get(text(target, "data"));
+                        String targetEnumId = enumOfState.getOrDefault(text(target, "data"), "");
+                        if (targetStateEntity != null && "STATE".equals(text(target, "type"))
+                                && !targetEnumId.isEmpty()) {
+                            anchorTargetState = text(targetStateCell, "label").isEmpty()
+                                    ? text(targetStateEntity, "label") : text(targetStateCell, "label");
+                            anchorEnumTypeId = targetEnumId;
+                            if (fromTopLevel && !targetEnumId.isEmpty()) {
+                                String hostMemberId = hostEnumMemberId(def.ownerTypeId, targetEnumId);
+                                if (!hostMemberId.isEmpty()) {
+                                    anchorMember = new MemberPathIR(
+                                            new SelfIR(GromaTypes.entity(def.ownerTypeId)),
+                                            List.of(hostMemberId), GromaTypes.enumType(targetEnumId));
+                                }
+                            } else {
+                                anchorMember = enumMemberOperand(def, v, targetEnumId);
+                            }
+                        }
+                    }
                     ConditionRuleIR rule = new ConditionRuleIR(
-                            op, stateLabel, conditionsOf(linkEntity), describe, expressionOf(linkEntity));
+                            op, stateLabel, conditionsOf(linkEntity), describe, expressionOf(linkEntity),
+                            anchorTargetState, anchorMember, anchorEnumTypeId);
                     if (agent) {
                         // R21 维持条件只进运行期逐拍检查（checkMaintain → paa）。
                         // 修复：此前 agent 兼作 canStart 启动门槛——初始不满足时退化为 psf，
@@ -2087,6 +2120,17 @@ public final class AbModelMergerAndParser {
             if (sourceTypeId == null) {
                 sourceTypeId = ownerTypeId;
             }
+            // 被动事件订阅归一（code4.html M4 收割，标准 21 类事件全集）：am/xm/ar/vr/xr 订阅
+            // 源在类型/场景图元（而非成员图元）时是类型级语义——被操作目标自身无持有方成员键，
+            // 统一以通配令牌 "*" 注册；引擎派发侧 firePassiveOnTarget（令牌 "*"）与
+            // GromaTriggerTable.dispatch 通配兜底（持有方令牌事件）与之对齐
+            if (("am".equals(eventCode) || "xm".equals(eventCode) || "ar".equals(eventCode)
+                    || "vr".equals(eventCode) || "xr".equals(eventCode))
+                    && sourceEntity != null
+                    && ("TYPE".equals(text(sourceEntity, "type")) || "SCENE".equals(text(sourceEntity, "type"))
+                    || "ASSOCIATION-TYPE".equals(text(sourceEntity, "type")))) {
+                memberToken = "*";
+            }
             return new TriggerIR(sourceTypeId, memberToken, eventCode, stateLabel, judge,
                     sourceOperand, contextPath, targetDefKey, hostPath, args, postActions, ownerTypeId, describe,
                     expression, probability, probabilityGroup);
@@ -2200,10 +2244,24 @@ public final class AbModelMergerAndParser {
             if (!direct.isEmpty() && entities.containsKey(direct) && !direct.equals(typeId)) {
                 parents.add(direct);
             }
+            // 复数继承字段（code4.html M2 收割加固）：inheritEntityIds 数组与单值同语义
+            // （模型 2 智能筹划真实字段形态；此前仅画布 edge-extend/PARENT 路径兜底命中）
+            JsonNode plural = field(typeEntity, "inheritEntityIds");
+            if (plural != null && plural.isArray()) {
+                for (JsonNode item : plural) {
+                    String pid = item.asText("").trim();
+                    if (!pid.isEmpty() && entities.containsKey(pid) && !pid.equals(typeId)) {
+                        parents.add(pid);
+                    }
+                }
+            }
+            // 跨组件引用对象数组：真实语料键形如 {"directCmpId":…, "entityId":…}（entityId 为父类型 id），
+            // 兼容旧版 id 键
             JsonNode inherits = field(typeEntity, "inherits");
             if (inherits != null && inherits.isArray()) {
                 for (JsonNode item : inherits) {
-                    String pid = item.isObject() ? text(item, "id") : item.asText().trim();
+                    String pid = item.isObject() ? orFallback(text(item, "entityId"), text(item, "id"))
+                            : item.asText().trim();
                     if (!pid.isEmpty() && entities.containsKey(pid) && !pid.equals(typeId)) {
                         parents.add(pid);
                     }

@@ -33,6 +33,11 @@ class ModelPipelineIntegrationTest {
             if (Files.isRegularFile(candidateCorpus.resolve("data-a.json"))) {
                 return Optional.of(candidateCorpus);
             }
+            // 回退：docs 平铺布局（groma/docs/data-a.json 镜像）
+            Path flatDocs = candidate.resolve("docs");
+            if (Files.isRegularFile(flatDocs.resolve("data-a.json"))) {
+                return Optional.of(flatDocs);
+            }
         }
         return Optional.empty();
     }

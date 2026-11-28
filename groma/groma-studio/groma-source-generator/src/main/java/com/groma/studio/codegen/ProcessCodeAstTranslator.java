@@ -82,6 +82,26 @@ public final class ProcessCodeAstTranslator {
 
         BlockStmt block = parsed.getResult().get();
 
+        // 2.0 存量集合序列化习惯 `X.itemsToNJson()` → BuiltinTools.itemsToNJson(X)：
+        //     必须先于绑定改写单独一遍处理——外层 setValue 整节点替换时内层调用会随原 AST 一起被换掉而漏改
+        block.findAll(MethodCallExpr.class).forEach(call -> {
+            if (!"itemsToNJson".equals(call.getNameAsString()) || !call.getArguments().isEmpty()) {
+                return;
+            }
+            String scopeCode = call.getScope().map(java.util.Objects::toString).orElse("");
+            if (call.getScope().orElse(null) instanceof NameExpr scopeName) {
+                VarBinding scopeBinding =
+                        zhToEnVarBindings.get(stripLeadingUnderscore(scopeName.getNameAsString()));
+                if (scopeBinding != null) {
+                    scopeCode = scopeBinding.getterExpr();
+                }
+            }
+            if (!scopeCode.isBlank()) {
+                call.replace(StaticExprFactory.parseExpr(
+                        "com.groma.base.engine.BuiltinTools.itemsToNJson(" + scopeCode + ")"));
+            }
+        });
+
         // 2.1 改写存量平台习惯的 `中文对象.getValue()` 与 `中文对象.setValue(val)` / `setKeyInstOrValue(val)`
         block.findAll(MethodCallExpr.class).forEach(call -> {
             call.getScope().ifPresent(scope -> {

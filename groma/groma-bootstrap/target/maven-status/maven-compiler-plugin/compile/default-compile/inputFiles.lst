@@ -10,6 +10,7 @@
 /Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/ModelUploadController.java
 /Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/PipelineConfiguration.java
 /Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/RemoteModelFetcher.java
+/Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/RepoModelsSyncService.java
 /Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/ScriptIoBridgeConfiguration.java
 /Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/SessionArchiveController.java
 /Users/zyh/work/orpl/groma/groma-bootstrap/src/main/java/com/groma/bootstrap/pipeline/SessionArchiveService.java

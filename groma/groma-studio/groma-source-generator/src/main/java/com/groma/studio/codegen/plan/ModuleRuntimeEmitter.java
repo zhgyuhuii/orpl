@@ -98,9 +98,16 @@ public final class ModuleRuntimeEmitter {
         }
     }
 
-    /** 接线项：序号在默认启动、事件触发与手动启动之间连续编号，启动器与线上判断方法按序号命名 */
+    /** 接线项：序号在默认启动、事件触发、手动启动与过程级异常流之间连续编号，启动器与线上判断方法按序号命名 */
     private record Wiring(int seq, String typeId, String targetDefKey, List<ArgBindingIR> args,
-                          List<PostIR> postActions, boolean defaultStart, boolean manual) {}
+                          List<PostIR> postActions, boolean defaultStart, boolean manual,
+                          String exceptionExitCode, String sourceDefKey) {
+        /** 常规接线（默认启动 / 事件触发 / 手动启动） */
+        Wiring(int seq, String typeId, String targetDefKey, List<ArgBindingIR> args,
+               List<PostIR> postActions, boolean defaultStart, boolean manual) {
+            this(seq, typeId, targetDefKey, args, postActions, defaultStart, manual, "", "");
+        }
+    }
 
     private List<Wiring> wirings() {
         List<Wiring> out = new ArrayList<>();
@@ -115,6 +122,21 @@ public final class ModuleRuntimeEmitter {
         for (ManualStartIR manual : model.manualStarts) {
             out.add(new Wiring(out.size() + 1, manual.typeId(), manual.targetDefKey(), manual.args(),
                     manual.postActions(), false, true));
+        }
+        // R25/R26 过程级异常流（sourcePc=-1，code4.html M5 收割）：过程自身 pcd/pca 事件拉起补偿过程。
+        // 引擎 emitProcessEvent 以宿主为源、过程定义键为成员令牌派发 pcd/pca，走标准触发表路由。
+        for (ProcInfo parent : model.procList) {
+            if (parent.def().exceptionFlows() == null || parent.owner() == null) {
+                continue;
+            }
+            for (CompilePlanIR.ExceptionFlowIR flow : parent.def().exceptionFlows()) {
+                if (flow.sourcePc() >= 0 || flow.targetDefKey().isEmpty()) {
+                    continue;
+                }
+                String exitCode = "OVERTIME_PCD".equals(flow.eventKind()) ? "pcd" : "pca";
+                out.add(new Wiring(out.size() + 1, parent.owner().typeId(), flow.targetDefKey(),
+                        List.of(), List.of(), false, false, exitCode, parent.defKey()));
+            }
         }
         return out;
     }
@@ -167,6 +189,22 @@ public final class ModuleRuntimeEmitter {
                 ctor.addCode("// 默认启动：$L 创建后启动「$L」\n", contextType.zhName(), target.zhName());
                 ctor.addStatement("table.onDefaultStart($S, $L, this::start$L, $S)", contextType.code(),
                         listOf(start.hostPath()), wiring.seq(), target.zhName());
+            } else if (!wiring.exceptionExitCode().isEmpty()) {
+                // R25/R26 过程级异常流（code4.html M5 收割）：监听过程自身 pcd/pca（事件源=宿主，
+                // 成员令牌=父过程定义键）拉起补偿过程；节点级（sourcePc>=0）由 ProcessTaskEmitter 路由
+                TypeInfo sourceType = model.types.get(wiring.typeId());
+                ProcInfo parent = model.procs.get(wiring.sourceDefKey());
+                if (target.owner() != null && parent != null && target.owner() != parent.owner()) {
+                    model.diagnostic("过程级异常流补偿过程「" + target.zhName() + "」的宿主类型与被监控过程"
+                            + "「" + parent.zhName() + "」不一致，已跳过（宿主实参无法安全转型）");
+                    continue;
+                }
+                ctor.addCode("// 过程级异常流：「$L」自身 $L → 启动补偿过程「$L」\n",
+                        parent == null ? wiring.sourceDefKey() : parent.zhName(),
+                        wiring.exceptionExitCode(), target.zhName());
+                ctor.addStatement("table.onEvent($S, $S, $S, $S, null, $L, $L, this::start$L, $S)",
+                        sourceType == null ? "" : sourceType.code(), wiring.sourceDefKey(),
+                        wiring.exceptionExitCode(), "", List.of(), List.of(), wiring.seq(), target.zhName());
             } else {
                 TriggerIR trigger = triggerOf(wiring.seq());
                 TypeInfo sourceType = model.types.get(trigger.sourceTypeId());

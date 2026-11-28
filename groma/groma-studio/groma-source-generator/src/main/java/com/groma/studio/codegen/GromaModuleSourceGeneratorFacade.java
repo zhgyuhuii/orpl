@@ -1,5 +1,6 @@
 package com.groma.studio.codegen;
 
+import com.groma.studio.codegen.plan.DtoWsRepositoryLayerEmitter;
 import com.groma.studio.codegen.plan.LegacyPlanAdapter;
 import com.groma.studio.codegen.plan.ManifestAndIndexEmitter;
 import com.groma.studio.codegen.plan.ModelLayerEmitter;
@@ -36,9 +37,21 @@ public final class GromaModuleSourceGeneratorFacade {
             .build();
 
     public GeneratedModuleBundle generateModule(GromaModuleIR ir, Map<String, String> existingSymbolLocks) {
+        return generateModule(ir, existingSymbolLocks, null);
+    }
+
+    /**
+     * 带语料短哈希的出码入口（多版本并存收口）：版本化编码在基础码解析完成之后追加
+     * （基础码可能来自 IR 显式编码，也可能由命名引擎按模型中文名转译），模块目录、Java 包名、
+     * 注册编码随之版本化；Maven artifactId 保持稳定基础名。
+     *
+     * @param versionHash 语料内容 SHA-256 前 8 位十六进制；null/空 表示不版本化（既有测试与手写 IR 路径）
+     */
+    public GeneratedModuleBundle generateModule(GromaModuleIR ir, Map<String, String> existingSymbolLocks,
+                                                String versionHash) {
         CompilePlanIR plan = (ir.compilePlan() == null || CompilePlanIR.EMPTY.equals(ir.compilePlan()))
                 ? LegacyPlanAdapter.adapt(ir) : ir.compilePlan();
-        PlanModel model = PlanModel.of(ir, plan, existingSymbolLocks);
+        PlanModel model = PlanModel.of(ir, plan, existingSymbolLocks, versionHash);
         ProcessCodeAstTranslator codeTranslator = new ProcessCodeAstTranslator();
 
         AstSourceMap sourceMap = new AstSourceMap();
@@ -91,6 +104,11 @@ public final class GromaModuleSourceGeneratorFacade {
         }
         for (PlanModel.SceneInfo scene : model.scenes) {
             putJava(bundle, serviceEmitter.emitController(scene));
+        }
+        // 标准分层契约补齐（code4.html M6 收割）：model/dto + ws + repository 三层逐场景产物
+        DtoWsRepositoryLayerEmitter dtoWsEmitter = new DtoWsRepositoryLayerEmitter(model);
+        for (JavaFile dtoWsFile : dtoWsEmitter.emitAll()) {
+            putJava(bundle, dtoWsFile);
         }
         if (!model.scenes.isEmpty()) {
             putJava(bundle, serviceEmitter.emitConfiguration());

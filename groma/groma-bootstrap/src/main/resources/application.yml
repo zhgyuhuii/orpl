@@ -2,16 +2,17 @@
 server:
   port: ${GROMA_SERVER_PORT:8080}
   tomcat:
-    max-swallow-size: 10MB
-    max-http-form-post-size: 10MB
+    max-swallow-size: ${GROMA_UPLOAD_MAX_REQUEST:10MB}
+    max-http-form-post-size: ${GROMA_UPLOAD_MAX_REQUEST:10MB}
 
 spring:
   application:
     name: groma-simulation-service
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      # 请求体显式上限（NP-R09）：默认 10MB，全量模型语料部署可经环境变量上调（真机轮实测 10.8MB 语料被拦）
+      max-file-size: ${GROMA_UPLOAD_MAX_FILE:10MB}
+      max-request-size: ${GROMA_UPLOAD_MAX_REQUEST:10MB}
   autoconfigure:
     exclude:
       # 连接器的数据源由管理员在运行期受控注册（AnyTableQueryConnector），宿主不需要启动期 DataSource

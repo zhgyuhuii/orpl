@@ -305,6 +305,8 @@ public final class PlanModel {
     public final CompilePlanIR plan;
     public final String modelCode;
     public final String moduleDir;
+    /** 稳定 Maven artifactId（model-{基础码}，无语料短哈希后缀）；目录名 {@link #moduleDir} 仍带哈希 */
+    public final String artifactId;
     public final String basePkg;
     /** R05 集合代理定义按类型分组（代理图元实体 id 消费见 ModelLayerEmitter 集合事件汇） */
     public Map<String, List<CompilePlanIR.ProxyDefIR>> proxiesByType;
@@ -333,7 +335,8 @@ public final class PlanModel {
     public final ClassName conditionJudge;
 
 
-    private PlanModel(GromaModuleIR ir, CompilePlanIR plan, Map<String, String> existingSymbolLocks) {
+    private PlanModel(GromaModuleIR ir, CompilePlanIR plan, Map<String, String> existingSymbolLocks,
+                      String versionHash) {
         this.ir = ir;
         this.plan = plan;
         this.lockTable = new SymbolLockTable();
@@ -354,8 +357,11 @@ public final class PlanModel {
         if (rawCode == null || rawCode.isBlank()) {
             rawCode = naming.resolveFieldName("model", "model", "", firstSegment(ir.modelLabel()), null, false);
         }
-        this.modelCode = toKebab(rawCode);
+        // 多版本并存收口：基础码解析完成后追加语料短哈希（同内容幂等，异版本互不顶替）
+        this.modelCode = ModelVersionHashUtil.composeVersionedModelCode(toKebab(rawCode), versionHash);
         this.moduleDir = "model-" + modelCode;
+        // Maven 坐标稳定基础名：剥离语料短哈希后缀（同源多版本只保留目录级隔离，artifactId 不随哈希漂移）
+        this.artifactId = "model-" + ModelVersionHashUtil.artifactIdOf(modelCode);
         this.basePkg = "com.groma.models." + modelCode.replace("-", "");
         this.modelId = ir.modelId() == null ? "" : ir.modelId();
         this.modelLabel = ir.modelLabel() == null ? modelCode : ir.modelLabel();
@@ -367,7 +373,13 @@ public final class PlanModel {
     }
 
     public static PlanModel of(GromaModuleIR ir, CompilePlanIR plan, Map<String, String> existingSymbolLocks) {
-        PlanModel model = new PlanModel(ir, plan, existingSymbolLocks);
+        return of(ir, plan, existingSymbolLocks, null);
+    }
+
+    /** 版本化入口：{@code versionHash} 非空时在基础码解析完成后追加语料短哈希后缀 */
+    public static PlanModel of(GromaModuleIR ir, CompilePlanIR plan, Map<String, String> existingSymbolLocks,
+                               String versionHash) {
+        PlanModel model = new PlanModel(ir, plan, existingSymbolLocks, versionHash);
         model.build();
         model.linkCallees();
         return model;

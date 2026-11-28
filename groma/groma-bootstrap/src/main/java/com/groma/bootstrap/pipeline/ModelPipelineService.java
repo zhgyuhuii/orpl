@@ -46,18 +46,42 @@ public class ModelPipelineService {
     private final Path workspaceRoot;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ModelPipelineService(VersionPinnedHotSwapManager hotSwap,
                                 WorkspaceSyncService workspaceSync,
                                 JavacParityVerifier javacVerifier,
                                 GromaModelRegistry modelRegistry,
+                                RepoModelsSyncService repoModelsSync,
                                 @org.springframework.beans.factory.annotation.Value(
                                         "${groma.pipeline.workspace-root:groma-workspace}") String workspaceRoot) {
+        this(hotSwap, workspaceSync, javacVerifier, modelRegistry, workspaceRoot, repoModelsSync);
+    }
+
+    /** 单测便捷构造：仓内合包同步未启用（E2 收割后集成测试默认不落仓） */
+    public ModelPipelineService(VersionPinnedHotSwapManager hotSwap,
+                                WorkspaceSyncService workspaceSync,
+                                JavacParityVerifier javacVerifier,
+                                GromaModelRegistry modelRegistry,
+                                String workspaceRoot) {
+        this(hotSwap, workspaceSync, javacVerifier, modelRegistry, workspaceRoot, null);
+    }
+
+    private ModelPipelineService(VersionPinnedHotSwapManager hotSwap,
+                                 WorkspaceSyncService workspaceSync,
+                                 JavacParityVerifier javacVerifier,
+                                 GromaModelRegistry modelRegistry,
+                                 String workspaceRoot,
+                                 RepoModelsSyncService repoModelsSync) {
         this.hotSwap = hotSwap;
         this.workspaceSync = workspaceSync;
         this.javacVerifier = javacVerifier;
         this.modelRegistry = modelRegistry;
         this.workspaceRoot = Path.of(workspaceRoot);
+        this.repoModelsSync = repoModelsSync == null
+                ? new RepoModelsSyncService("") : repoModelsSync;
     }
+
+    private final RepoModelsSyncService repoModelsSync;
 
     /** 构建结果报告（REST 返回体，全部为可序列化字段） */
     public record BuildReport(
@@ -80,8 +104,18 @@ public class ModelPipelineService {
      */
     public BuildReport buildFromCorpus(Path dataA, Path dataB) {
         List<String> problems = new ArrayList<>();
-        // 1. 解析（A+B 合并 → 编译计划）
-        GromaModuleIR ir = new AbModelMergerAndParser().parse(dataA, dataB);
+        // 1. 解析（A+B 合并 → 编译计划）；语料短哈希收口 → 版本化模型编码（多版本并存、同内容幂等）
+        byte[] bytesA;
+        byte[] bytesB;
+        try {
+            bytesA = Files.readAllBytes(dataA);
+            bytesB = Files.readAllBytes(dataB);
+        } catch (IOException ex) {
+            throw new UncheckedIOException("语料读取失败: " + ex.getMessage(), ex);
+        }
+        GromaModuleIR ir = new AbModelMergerAndParser().parse(bytesA, bytesB);
+        // 语料短哈希（多版本并存收口）：在生成器内于基础码解析完成后追加，同内容幂等、异版本互不顶替
+        String corpusHash = com.groma.studio.codegen.plan.ModelVersionHashUtil.shortCorpusHash(bytesA, bytesB);
         CompilePlanIR plan = ir.compilePlan();
         List<String> warnings = new ArrayList<>(plan.warnings());
         // 1.5 静态校验（VAL-001~010，修复原实现漏调校验器的断层）：
@@ -101,8 +135,8 @@ public class ModelPipelineService {
             throw new IllegalArgumentException(
                     "MODEL_VALIDATION_FAILED: 静态校验存在 " + problems.size() + " 条 ERROR（见 problems 明细），已阻断出码");
         }
-        // 2. 出码
-        GeneratedModuleBundle bundle = new GromaModuleSourceGeneratorFacade().generateModule(ir, Map.of());
+        // 2. 出码（带语料短哈希 → 版本化模型编码）
+        GeneratedModuleBundle bundle = new GromaModuleSourceGeneratorFacade().generateModule(ir, Map.of(), corpusHash);
         String modelCode = runtimeCodeOf(bundle);
         // 3. 工程落盘（原子同步 + 父 POM 模块登记 + 手写区合并）；布局 <workspace>/groma-models/<module>/
         String workspaceModuleDir;
@@ -132,6 +166,17 @@ public class ModelPipelineService {
                 ir.compilePlan().types().size(), ir.compilePlan().processDefs().size(), ir.scenes().size(), "hotswap"));
         // 通知注册中心：刷新 MCP 动态工具清单（ModelToolRegistrar.onModelMountedAsync）
         modelRegistry.onModelMounted(modelCode);
+        // 4.5 仓内合包同步（code4.html E2 收割）：repo-models-root 已配置时镜像进仓库 groma-models
+        //      并重写聚合 pom 模块清单，兑现"下载即 mvn clean package 合包运行"（说明书 1.3 模式一）。
+        //      同步失败不阻断流水线（workspace 热挂载路径不受影响），记入 problems 供部署侧感知。
+        if (repoModelsSync.enabled()) {
+            try {
+                repoModelsSync.syncModule(bundle.getModuleDirName(),
+                        Path.of(workspaceModuleDir));
+            } catch (IOException ex) {
+                problems.add("仓内合包同步失败: " + ex.getMessage());
+            }
+        }
         // 5. javac 一致性对拍（JDK 可用时）
         boolean javacParity = false;
         String javacNote;
@@ -140,7 +185,11 @@ public class ModelPipelineService {
                 CompilationResult javacResult = javacVerifier.verifyWithJavac(
                         bundle.getModuleDirName(), bundle.getFiles(), bundle.getSourceMap());
                 javacParity = javacResult.success();
-                javacNote = "javac 对拍完成，类数量 " + javacResult.classBytecodes().size();
+                javacNote = javacParity
+                        ? "javac 对拍完成，类数量 " + javacResult.classBytecodes().size()
+                        : "javac 对拍不一致（错误 " + javacResult.diagnostics().size() + " 条；"
+                                + "fat jar 运行态嵌套依赖不在 java.class.path，javac 无法解析 groma-base——"
+                                + "已知限制：运行态编译门禁为 ECJ，javac 对拍门禁在源码树/CI 生效）";
             } catch (RuntimeException ex) {
                 javacNote = "javac 对拍失败: " + ex.getMessage();
                 problems.add(javacNote);

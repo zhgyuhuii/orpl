@@ -209,7 +209,7 @@ public final class ManifestAndIndexEmitter {
                         </plugins>
                     </build>
                 </project>
-                """.formatted(model.moduleDir, escapeXml(model.modelLabel), model.modelVersion,
+                """.formatted(model.artifactId, escapeXml(model.modelLabel), model.modelVersion,
                 escapeXml(model.modelLabel), escapeXml(model.modelId));
     }
 

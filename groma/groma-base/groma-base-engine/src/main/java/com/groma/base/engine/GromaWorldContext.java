@@ -297,18 +297,24 @@ public abstract class GromaWorldContext extends AbstractWorldSession
             return;
         }
         if (newRef != null && oldRef == null) {
-            // 获得引用（ra）：成员从无指向变为指向某对象（存量引擎 onMemberRefGain）
+            // 获得引用（ra）：成员从无指向变为指向某对象（存量引擎 onMemberRefGain）；
+            // 被动视角：新目标同步发 ar（被建立指向，code4.html M4 收割，标准 21 类事件全集）
             fire("ra", owner, memberToken, "", "", "");
+            firePassiveOnTarget(newRef, "ar", owner);
             return;
         }
         if (newRef != null) {
-            // 指向变化（rv）：成员从指向旧对象变为指向另一对象（存量引擎 onMemberRefChanged → VALUE_REF）；不再同时发 ra
+            // 指向变化（rv）：成员从指向旧对象变为指向另一对象（存量引擎 onMemberRefChanged → VALUE_REF）；
+            // 不再同时发 ra；被动视角：旧目标发 xr（被解除指向）、新目标发 vr（引用改向被动）
             fire("rv", owner, memberToken, "", "", "");
+            firePassiveOnTarget(oldRef, "xr", owner);
+            firePassiveOnTarget(newRef, "vr", owner);
             return;
         }
         if (oldRef != null) {
-            // 失去引用（rx）
+            // 失去引用（rx）；被动视角：旧目标发 xr（被解除指向）
             fire("rx", owner, memberToken, "", "", "");
+            firePassiveOnTarget(oldRef, "xr", owner);
             return;
         }
         boolean enumChange = oldValue instanceof Enum<?> || newValue instanceof Enum<?>;
@@ -372,6 +378,20 @@ public abstract class GromaWorldContext extends AbstractWorldSession
     }
 
     // ------------------------------------------------------------------ 双视角关系事件辅助（方案 C 收割，R07~R10 关联管理器与集合代理使用）
+
+    /**
+     * 被动视角事件派发（code4.html M4 收割，标准 21 类事件全集收口）：
+     * 在被指向/被操作目标实体上派发 am/xm/ar/vr/xr，成员令牌固定为类型级通配 "*"——
+     * 被动事件的订阅定义在目标类型自身视图（无持有方成员键），
+     * GromaTriggerTable.dispatch 对令牌 "*" 精确匹配类型级通配注册、对持有方令牌事件走通配兜底。
+     * 目标必须存活（xs 语义由消耗线专用路径处理）；静默期已在调用侧拦截。
+     */
+    final void firePassiveOnTarget(BaseSimEntity target, String passiveEventCode, BaseSimEntity peer) {
+        if (target == null || !target.isAlive()) {
+            return;
+        }
+        fire(passiveEventCode, target, "*", "", peer == null ? "" : peer.getInstanceId(), "被动视角");
+    }
 
     /**
      * 关联建立/重指向双视角事件：主动端发 ra（建立指向）或 rv（变更指向），

@@ -29,11 +29,14 @@ public final class StaticModelValidator {
     public static final double PROBABILITY_SUM_MAX = 1.0001D;
     /** VAL-006：定值严禁连接的关系类型（消耗/生成/状态转换/输出影响，标准 7.3）。
      *  双口径：解析器 toViewGraph 写入的是 linkType 短名（consumption 等），
-     *  CanvasMappingTables 归一化名为 R 码（R11_CONSUMPTION 等），两套都要拦截。 */
+     *  CanvasMappingTables 归一化名为 R 码（R11_CONSUMPTION 等），两套都要拦截。
+     *  in-out-influence 含写入方向（code4.html M2 收割加固），与输出影响同罪拦截。 */
     private static final Set<String> FORBIDDEN_FOR_CONSTANT = Set.of(
             "R11_CONSUMPTION", "R12_RESULT", "R13_IN_CHANGE", "R14_OUT_CHANGE",
-            "R15_IN_OUT_NORMALIZED", "R18_OUT_INFLUENCE",
-            "consumption", "result", "in-change", "out-change", "in-out", "out-influence");
+            "R15_IN_OUT_NORMALIZED", "R18_OUT_INFLUENCE", "R19_IN_OUT_INFLUENCE_NULLABLE",
+            "R20_IN_OUT_INFLUENCE_NONNULL",
+            "consumption", "result", "in-change", "out-change", "in-out", "out-influence",
+            "in-out-influence", "in-out-influence-nullable", "in-out-influence-nonnull");
     /** VAL-010：点分成员链（如 a.b.c.d），两段以上视为引用定位路径 */
     private static final Pattern MEMBER_PATH = Pattern.compile("[\\w\\u4e00-\\u9fa5]+(?:\\.[\\w\\u4e00-\\u9fa5]+)+");
     /** VAL-007：显式编码形态（与 UniqueIdentifierGuard.VALID_ENCODE 同口径）——

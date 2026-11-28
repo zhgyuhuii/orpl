@@ -1,5 +1,11 @@
-com/groma/base/engine/BuiltinToolsCollectionsTest.class
 com/groma/base/engine/archive/ReloadContinuityTest$MiniWaterTankWorld.class
-com/groma/base/engine/TwinSpeedLockTest.class
 com/groma/base/engine/archive/ReloadContinuityTest.class
+com/groma/base/engine/PassiveEventDispatchTest.class
 com/groma/base/engine/InstanceRegistryTest.class
+com/groma/base/engine/PassiveEventDispatchTest$Fired.class
+com/groma/base/engine/BuiltinToolsCollectionsTest.class
+com/groma/base/engine/PassiveEventDispatchTest$StubContext.class
+com/groma/base/engine/PassiveEventDispatchTest$StubRuntime.class
+com/groma/base/engine/TwinSpeedLockTest.class
+com/groma/base/engine/PassiveEventDispatchTest$1.class
+com/groma/base/engine/PassiveEventDispatchTest$StubEntity.class

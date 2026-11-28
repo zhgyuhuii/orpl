@@ -501,3 +501,119 @@ P1~P5 全部交付（交接文档 HANDOFF-2026-11-27.md 的未完成事项清零
 1. `SyntheticSemanticRuntimeTest`（未跟踪，04:19；RM-C1 运行期验收/R24 自环/E4 多版本并存收口——正是 §10.3/§12.4 挂账项，方向正确）。其 `mutexCdfPsfPaaAndLastEndRuntimeAcceptance` 失败根因已定位（jshell 直解 IR 取证）：fixture `lnk_agent_guard` 维持条件比较符写反——测试注释意图"护盾值>50 失能→paa"，数据是 `{"code":"<","value":50}`（护盾 100 时规则恒假→按语义首拍即 paa，护盾降为 1 后反而恒真→永无 paa，与断言期望的时序恰好相反）。**修复只需把该 fixture 的 `<` 改 `>`（一行）**；解析与出码两侧行为忠实（本会话 jshell 实证 IR 中 maintain=护盾值<50 正确入库）。此外该测试注释宣称"延迟 2 拍降级赋值"，但 fixture 全文无 delayType/delayValue 字段——修正比较符后 paa 时序虽可成立，注释仍与数据不符，宜一并修订。
 2. `ModelPipelineIntegrationTest` / `PortSessionFlowIntegrationTest`（04:03 修改）：新增断言"模型编码 = 基础码 + 语料摘要短哈希后缀（多版本并存收口）"——对应挂账 E4，但**派生侧实现不在工作区**（PlanModel moduleCode 派生未改），两用例当前必然红。属该会话 TDD 半成品。
 3. 责任划定：本轮 12 个触及模块全绿；scan.py 除上述未跟踪文件外零违例（临时移出验证 exit 0，随即原样还原）。该会话恢复工作时应：修 fixture 比较符 → 实现 E4 派生 → 3 个红用例自然转绿。
+
+## 十三、code4.html（Gemini 第四轮存档）核实与收割（2026-11-28 第九轮）
+
+> 输入：`docs/code4.html`（3.1MB Gemini 会话存档）——新报告《双模型（data-a/b + scene-a/b）Java 工程转化能力与全量关系表示深度审查及闭环修改方案》：
+> 断层 E1~E6 + 8 项关系缺口 + 方案 M1~M6（含幻觉风险代码）。本轮逐条核查 → 按真实 API 适配收割 → 全量回归。
+
+### 13.1 断言逐条核查矩阵（与 12.4 挂账对照）
+
+| code4 断言 | 判定 | 证据与处置 |
+|---|---|---|
+| E1a 多版本 modelCode 短哈希未实现→2 集成测试红 | ✅ 属实（=12.4 E4 挂账，并行会话 TDD 断言在先） | 实跑 3 测试全红；`shortCorpusHash` 无实现。**收割（M1 适配）**：`ModelVersionHashUtil`（source-generator plan 包）+ `PlanModel` 版本化入口（基础码解析完成后追加，目录/包名随哈希，**Maven artifactId 保持稳定基础名**）+ pipeline 读 bytes 算 SHA-256(A||':'||B) 前 8 位传入生成器。Gemini 的 withModelCode/IR-wither 方案不收（基础码在 PlanModel 内部由命名引擎解析，IR 层拿不到） |
+| E1b SyntheticSemanticRuntimeTest 裸 System.out | ✅ 属实 | 改 slf4j `LOG.debug`（syn.debug 门控保留） |
+| E1c fixture `lnk_agent_guard` 比较符写反 | ✅ 属实（12.5 已定位） | `<` → `>`；但 12.5 的"首拍即 paa"推断不完整——**真根因是引擎冻结 bug（见 13.2），修比较符仍无 paa**，两处同修后转绿 |
+| E1d corpusDir 只找 docs/model 会抛异常 | ❌ 不属实 | `orpl/docs/model` 镜像存在且与 groma/docs 逐字节一致；仍收 Gemini 回退建议（两测试加 `docs` 平铺回退，加固无害） |
+| E2 双轨 groma-models 割裂/合包 0 模型 | ✅ 属实（=12.4 E1 挂账） | **收割**：旧手写样例迁 `examples-handwritten/`（git mv 保历史）；groma-models pom 改流水线托管空清单；新建 `RepoModelsSyncService`（`groma.pipeline.repo-models-root` 配置开启：镜像模块进仓 + 同基础名旧版本出仓 + 重写聚合 pom modules + XML 自检）；bootstrap 增 `bundled-models` profile（按稳定 artifactId 依赖生成模型，`-Pbundled-models` 打包即内置）；pipeline 构建成功后同步（失败记 problems 不阻断）。Gemini 的"根 pom 加 module 指向 workspace"方案不收（workspace 不在 reactor，构建必失败——与 code2 块 29 拒收同因） |
+| E3 缺 model/dto/{Scene}StartDTO + ws 层 | ✅ 属实（dto=12.4 E2 挂账） | **收割（M6 适配）**：新建 `DtoWsRepositoryLayerEmitter`——逐场景 `{Scene}StartDTO`（强类型 seed/startPaused + initialOverrides，`fromMap` 线格式与既有 REST 契约完全一致，**不破坏 ws-protocol 锁定**）、`{Scene}WsChannel`（/ws/groma/{model}/{scene}/{sessionId} 路由元数据）、`{Scene}SnapshotRepository`（内存快照仓储，DB 逆向扩展点）；控制器 startSession/getSnapshot/stopSession 真实接线。三语料 ECJ 编译绿。说明书第 1 章列的 `repository` 层一并补齐（Gemini 未提） |
+| E4 export-zip 无 flavor=runtime | ✅ 属实（12.4 未单列，ENG-04 相关） | **收割（M6 适配）**：`ExportPlan+runtimeFlavor` + `?flavor=runtime`——`dist/groma-bootstrap.jar`（ApplicationHome 定位运行中 fat jar，IDE exploded 显式报错）+ 裁剪版根 pom（modules=groma-base,groma-models）+ base/所选模型源码 + README-RUNTIME；**studio 源码零泄露且解压后 mvn package 仅重建底座与模型**。Gemini 的"bootstrap 源码剔除 studio"方案不收（bootstrap 编译闭包含 hotswap/debug-server/parser/generator/sync 全部 studio 模块，源级剔除必编译失败） |
+| E5 模型 2 跨组件继承断链（外部基类不在 TYPE 表） | ❌ **不属实** | 实测 `8ESQFyP8tH40MToOBkp`（地图展示对象）**就在合并 TYPE 表中**（B 包外部引用组件带入），且生成代码 5 单元全部 `extends DiTuZhanShiObjectEntity`。附带发现：parser `inherits` 数组读 `id` 键而语料真实键是 `entityId`（继承实际靠画布 edge-extend 兜底命中）——**收割 M2 加固**：补读 `entityId`（兼容 `id`）+ 复数 `inheritEntityIds`；Gemini 的 synthesizeExternalParentTypes 合成基类方案不收（外部基类已在 TYPE 表，合成逻辑无触发条件） |
+| E6 旧 API 未 AST 转译（getValue/setValue/setKeyInstOrValue/itemsToNJson） | ⚠️ 半属实 | 前三个**早已转译**（translator 2.1 步）；仅 `.itemsToNJson()` 1 处降级为运行期 fail。**收割（M3 适配）**：`BuiltinTools.itemsToNJson`（实体元素转 exportState 快照；engine pom +jackson-databind）+ translator 2.0 步独立一遍改写（先于绑定改写——外层 setValue 整节点替换会吞掉内层 AST 节点）；模型 2 生成代码实证 `self.setHuiHuaShuJu(BuiltinTools.itemsToNJson(self.getSessionRecordList()))`。Gemini 的整类重写 translator 方案不收（现有实现已覆盖其大部分场景） |
+| am/xm 触发键宿主错配（元素自身订阅查表落空） | ⚠️ 机制属实、语料死（0 订阅） | **收割（M4）**：GromaTriggerTable.dispatch 通配兜底（精确键落空且被动码→`type|*|code`）+ parser buildTrigger 被动事件订阅源在 TYPE/SCENE 图元时令牌归一 `"*"` |
+| ar/vr/xr 被动事件未派发（直引成员只发持有方） | ⚠️ 机制属实、语料死 | **收割（M4）**：onMemberChanged 引用三分支补被动派发（ra→ar、rv→xr+vr、rx→xr；`firePassiveOnTarget` 令牌 `"*"`，死目标/静默期拦截）；RelationManager 路径此前已双视角（emitRelationLinked/Unlinked） |
+| observed 初始挂接不对称（单元素/多元素分支） | ❌ 不属实 | G4 收割（code3 轮）已把 init 与 setter 全路径统一 observed+sink（实测两分支都走 sink 包装） |
+| R24 自调用尾递归缺失（StackOverflowError） | ❌ 语料死（连线孤儿无 source/target） | 12.4 G8 挂账不变（12.5 取证升级为"真画布自调用已定位"）；rm-c2 合成模型已覆盖自环熔断路径 |
+| R25/R26 顶层（sourcePc=-1）异常流未激活 | ⚠️ 属实（现状只发事件，12.4 G7 已文档化取舍） | **收割（M5）**：ModuleRuntimeEmitter 把过程级异常流登记为标准触发表监听（引擎 emitProcessEvent 以宿主为源、父过程 defKey 为令牌派发 pcd/pca → 拉起补偿过程；宿主类型不一致诊断跳过）；语料 0 条（corpus-dead），运行期裁判挂账 |
+| R27 过程/成员级备注未采集 | ❌ 语料死（模型 1 note 连线孤儿、模型 2 NOTE 实体无目标） | TypeDefIR.notes 已收（code3）；proc/member 级无目标可采，挂账不变 |
+| R13/R15 前锚点缺失 | ⚠️ 属实（说明书 7.2 R13 行"首次步进前切换"；语料 in-change/in-out 连线为 0 条） | **收割（M5 节选）**：ConditionRuleIR +3 分量（anchorTargetState/anchorMember/anchorEnumTypeId，旧构造器兼容）+ parser in-change 分支捕获 target STATE 图元 + emitter canStart 末尾全条件通过后切换（生成 setter-with-events → sx/sv/sa）；运行期裁判挂账（RM-B2 的 gap 边无 STATE target，不触发新路径） |
+| R07 SingleRef/MultiRefSet 容器缺失 | ⚠️ 属实（=12.4 G3） | 不收不变：直引成员统一事件语义为既定取舍；容器出码需 parser 先物化 R07 入 IR（现仅 shape 表映射），语料 0 条 R07 连线 |
+
+### 13.2 引擎真 bug：等待提交阶段任务永久冻结（合成用例揪出，本轮最高价值发现）
+
+`mutexCdfPsaPaa...` 修正比较符后**仍无 paa**。逐拍 trace 取证：受护任务 begin() 内 stepMachine 清空机器（单瞬时比较节点、无等待子节点）→ 步进末置 `WAIT4SUCCESS` → `runProcess()` 对 WAIT4SUCCESS 早退 → **该任务既永不收尾（finishSuccess 不可达）、也永不执行 checkMaintain**——R21 维持中断在整个等待提交阶段完全失效，瞬时流过程（机器在 begin 即清空的耗时流）永久泄漏运行态。
+修复（`GromaProcessTask.runProcess`）：WAIT4SUCCESS 分支内宿主消亡检查 + checkMaintain（维持校验贯穿全程生命周期）+ 子提交收集 + `finishSuccess()` 收尾。**机器在 begin 即清空的耗时流过程此前是永久冻结的——受护任务类过程从打不出 paa。** 顺带修复测试侧 `recentEvents` 滚动窗口跨拍重复累计（按 seq 去重）。
+（该 bug 与 12.5 的比较符问题叠加：`<` 时理论上的"首拍 paa"也因冻结不可达。）
+
+### 13.3 回归与挂账更新
+
+- 新增 `PassiveEventDispatchTest`（groma-base-engine，3 用例）：ar/vr/xr 被动派发宿主断言、am/xm 通配兜底、持有方精确令牌不回归——被动事件路径的唯一运行期回归（真实语料 0 订阅）。
+- 全量 `clean test` + `scan.py`（见 13.5 终值）。
+- 挂账更新：E1（双轨合包）✅ 关闭、E4（多版本）✅ 关闭、E2（StartDTO）✅ 关闭（线格式兼容实现）、G7（顶层补偿）✅ 出码落地（运行期裁判挂账）、R13/R15 前锚点 ✅ 出码落地（运行期裁判挂账）、G3（R07 容器）❌ 不收维持。
+- 运行期裁判挂账（新）：R13/R15 前锚点、R25/R26 顶层补偿——两条路径语料零命中，需合成语料（含 STATE target 的 in-change 边 / overtime 边）验收后关闭。
+
+### 13.4 真机全生命期测试（tools/regression/host-lifecycle-smoke.sh，EXIT=0 全过）
+
+三段式（`tools/regression/host-lifecycle-smoke.sh <dataA> <dataB> <port>`，按模型暴露面分段）：
+
+- **A 热挂载出码**：宿主 fat jar（45MB）:18292 启动 → POST /api/v1/studio/models/upload（dataA/dataB）
+  → 六步流水线 → `modelCode = emergency-deduction-844676b1`（✓ 语料短哈希后缀）→ 259 源文件（含新 dto/ws/repository 层）。
+- **B 热挂载推演（MCP+WS）**：MCP streamable-http /mcp 握手 → `sim.start(scene1, seed=42)` →
+  sessionId `emergency_deduction_844676b1_1`（RUNNING，在途过程 2）→ `sim.step 60`（tick=60 精确）
+  → WS 频道 `/ws/groma/{model}/scene1/{sid}` 发 `CTL:G:3` → 收 `TP:` 帧 tick=63 → `sim.stop`。
+- **C 合包 REST（E2 全链路）**：仓内同步核验（模块镜像 256 源文件 + SPI 注册文件 + 聚合 pom 清单登记）
+  → `-Pbundled-models` 合包构建 → 启动 → REST `/api/v1/models/{code}/scenes/scene1/sessions`
+  （StartDTO 线格式）→ 推步 60 → 快照 tick=60/实例=1 → 暂停/倍速/恢复 → 快照仓储落点 →
+  存档回收 `/api/v1/studio/archives/sessions/{id}/evict` → 存档列表 1 份。
+
+真机轮揪出并修复 3 处（单元测试全绿的盲区，与 P1-P5 轮审查教训同款）：
+
+1. **WS 端点真机即断（P0）**：`SituationEndpoint.onOpen` 用 lambda 强转
+   `MessageHandler.Whole<String>` 注册处理器——Tomcat 11 反射读泛型签名失败，
+   onOpen 即抛 `IllegalStateException`，任何真实 WS 客户端握手后被立即掐断
+   （此前从未有真 WS 客户端打过该端点）。修复：具名内部类 `SituationTextHandler`
+   实现接口，泛型签名可读。修复后 TP 帧真机抵达。
+2. **multipart 上限不可调（P1）**：全量语料 10.8MB 撞 10MB 硬编码上限
+   （NP-R09 显式上限要求保留）——application.yml 上限改环境可调
+   （`GROMA_UPLOAD_MAX_FILE/REQUEST`，默认仍 10MB），真机部署可上调。
+3. **javac 对拍 fat jar 限制显性化**：`java.class.path` 在 fat jar 只含主 jar，
+   嵌套依赖 javac 读不到 → 对拍 false 且措辞误报"对拍完成，类数量 0"。
+   修复措辞（"对拍不一致…ECJ 为运行态门禁，javac 对拍门禁在源码树/CI 生效"），
+   嵌套 jar 对拍能力挂账。
+
+另修流水线侧两处测试脚本坑（MCP SSE 信封两层解析、macOS 系统级 SOCKS 代理劫持
+localhost WS——getproxies 读系统配置，须显式 proxy=None）。
+
+### 13.5 全量回归终值
+
+- 全仓 `mvn -o clean test`（14 模块，2026-11-28 08:59 收口）：**BUILD SUCCESS，98 用例 0 失败 0 错误 0 跳过**
+  （上轮基线 88 → 98：+3 PassiveEventDispatchTest；bootstrap 8 用例含此前 3 红的修复转绿 + 真实语料六步流水线
+  `emergency-deduction-844676b1`（源文件 259，含新增 dto/ws/repository 三层）+ javac 对拍 true）。
+- `tools/regression/scan.py`：**exit 0，23 条红线零违例**（System.out 修复与引擎/生成器改动全过）。
+- 全部 pom 改动（engine +jackson、bootstrap bundled-models profile、groma-models 托管清单）XML 校验通过。
+- 构建画像：模型 1 出码源文件 253→259（+逐场景 StartDTO/WsChannel/SnapshotRepository ×2 场景）。
+
+### 13.6 生成服务 vs ods 存量运行时差距与推演一致性验证
+
+> ods（/Users/zyh/work/orpl/ods，240 java 文件，com.okip.opm.ods）为存量推演运行时；
+> 编译需内网构件、运行依赖 Nacos/Kafka/Redis（redis 启动检查器在列），本地不可进程级运行——
+> 一致性验证走"存量语义契约回归 + 真机三通道对齐"代理路径。
+
+**差距矩阵**（有意差异 = 设计目标；缺口 = 挂账）：
+
+| 维度 | ods 存量 | groma 生成服务 | 判定 |
+|---|---|---|---|
+| 部署形态 | 常驻平台服务（Nacos/Kafka/Redis/DB） | 单进程 fat jar + 模型子模块，零中间件依赖 | 有意差异（说明书 1.3 独立运行目标） |
+| 模型表达 | 运行时动态解释（parsed/ontology） | 静态强类型五层源码（ECJ/javac 编译） | 有意差异（平台核心目标） |
+| 会话持久化 | Redis 键空间 | SimulationArchiveBundle 文件存档 + 步进边界确定性续跑 | 等价能力、不同实现 |
+| 事件分发 | Kafka | 进程内事件总线（单写者线程，docs/thread-model.md） | 等价能力、不同实现 |
+| WS 协议 | TP:/CTL:/SP:/T/I 帧 | 逐字复刻 + ConflationWsSender 慢客户端合并（真机 TP 帧实证） | 一致 |
+| 21 类事件 / 29 类连线语义 | 基准 | 逐条复刻（引擎注释逐条引存量行为）；被动事件全集本轮补齐 | 一致（本轮收口） |
+| 集合/数组工具 | ArrayClazz 1 基、MapClazz.setKeyInstOrValue | BuiltinTools 逐条对拍（BuiltinToolsCollectionsTest 锁定存量语义） | 一致 |
+| 手写过程代码 | 原生执行 | AST 无损转译：getValue/setValue/setKeyInstOrValue/itemsToNJson 四类全桥（本轮补最后一类） | 一致（本轮收口） |
+| 确定性 | Math.random 非确定 | DeterministicRngStream(seed) 同种子逐拍可复现 | groma 更强 |
+| R24 真画布自调用 | 支持 | 孤儿连线无法归属，挂账 | 缺口（语料挂账） |
+| WS 差量帧（TD） | — | 全量快照帧，差量挂账 | 缺口（涉前端协议） |
+| 千模型容量实测 | — | 机制具备（单写者/MPSC/快照零拷贝），千模块压测未跑 | 挂账 |
+
+**推演结果一致性验证（本轮实测四抓手）**：
+
+1. **真机三通道同模型同种子对齐**：MCP 会话 `sim.step 60` → tick=60 精确；REST 合包会话
+   同 seed=42 推步 60 → tick=60；WS 频道在 tick=60 基础上 `CTL:G:3` → TP 帧 tick=63。
+   三通道步进语义与快照结构（实例=1、在途过程=2/近期事件=200）互洽。
+2. **同种子确定性回归**：RealCorpusEndToEndTest 同语料同种子双跑，快照逐字段全等；
+   150→151 存档续跑全等（T1.5 三根因修复后转绿）。
+3. **黄金契约回归**：golden R09（300 拍存档重载后续跑 301~1000 快照摘要一致）类语义在
+   存档/重载测试中持续覆盖；BuiltinTools 存量语义（1 基序号、越界提示文案）测试锁定。
+4. **进程级 ods 对拍**：不可行（本地无法运行 ods），挂账待具备内网/中间件环境后以同语料
+   同种子双跑逐拍 diff 收口——现有代理证据已覆盖事件语义、工具语义、协议语义三层。

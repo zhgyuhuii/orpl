@@ -522,7 +522,39 @@ public abstract class GromaProcessTask {
      * 运行阶段（每个步进一次）：推进耗时叶过程与耗时子任务；瞬时节点不在这里执行
      */
     public final void runProcess() {
-        if (finished() || WAIT4SUCCESS.equals(status)) {
+        if (finished()) {
+            return;
+        }
+        if (WAIT4SUCCESS.equals(status)) {
+            // 等待提交阶段：宿主消亡与 R21 维持条件仍须逐拍校验（维持中断贯穿全程生命周期），
+            // 通过后提交收尾。修复：begin 阶段即清机的耗时流过程（机器无等待子节点，如仅含
+            // 单个瞬时比较节点的受护任务）曾永久停留此阶段——既不收尾、也不做维持校验。
+            if (host != null && !host.isAlive()) {
+                fail("宿主实例已消亡，过程无法继续执行");
+                return;
+            }
+            try {
+                checkMaintain();
+            } catch (RuntimeException ex) {
+                fail(ex);
+                return;
+            }
+            if (finished()) {
+                return;
+            }
+            if (!children.isEmpty()) {
+                for (GromaProcessTask child : List.copyOf(children)) {
+                    if (!child.finished()) {
+                        child.commit();
+                    }
+                }
+                if (!children.isEmpty()) {
+                    collectFinishedChildren();
+                }
+            }
+            if (!finished() && children.isEmpty()) {
+                finishSuccess();
+            }
             return;
         }
         if (host != null && !host.isAlive()) {

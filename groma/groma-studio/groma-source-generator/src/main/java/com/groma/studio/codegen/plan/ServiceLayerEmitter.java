@@ -185,7 +185,14 @@ public final class ServiceLayerEmitter {
                         .addMember("value", "$S", "/api/v1/models/" + model.modelCode + "/scenes/" + scene.sceneCode()).build())
                 .addAnnotation(ProcessTaskEmitter.meta(scene.type().typeId(), scene.zhName() + "控制器", "CONTROLLER"))
                 .addField(PlanModel.MODULE_RUNTIME, "moduleRuntime", Modifier.PRIVATE, Modifier.FINAL)
-                .addField(PlanModel.SESSION_MANAGER, "sessionManager", Modifier.PRIVATE, Modifier.FINAL);
+                .addField(PlanModel.SESSION_MANAGER, "sessionManager", Modifier.PRIVATE, Modifier.FINAL)
+                .addField(FieldSpec.builder(
+                                ClassName.get(model.basePkg + ".repository",
+                                        DtoWsRepositoryLayerEmitter.snapshotRepositorySimple(scene)),
+                                "snapshotRepository", Modifier.PRIVATE, Modifier.FINAL)
+                        .initializer("new $T()", ClassName.get(model.basePkg + ".repository",
+                                DtoWsRepositoryLayerEmitter.snapshotRepositorySimple(scene)))
+                        .build());
         cb.addMethod(MethodSpec.constructorBuilder().addModifiers(Modifier.PUBLIC)
                 .addParameter(PlanModel.MODULE_RUNTIME, "moduleRuntime").addParameter(PlanModel.SESSION_MANAGER, "sessionManager")
                 .addStatement("this.moduleRuntime = moduleRuntime").addStatement("this.sessionManager = sessionManager").build());
@@ -197,11 +204,12 @@ public final class ServiceLayerEmitter {
                         .addAnnotation(AnnotationSpec.builder(REQUEST_BODY).addMember("required", "false").build()).build())
                 .returns(PlanModel.resultOf(PlanModel.STRING_TYPE))
                 .addCode("""
-                        boolean startPaused = startParams != null && Boolean.TRUE.equals(startParams.get("startPaused"));
-                        Long seed = startParams == null || startParams.get("seed") == null ? null
-                                : $T.toLong(startParams.get("seed"));
-                        return $T.ok(sessionManager.startSession(moduleRuntime, $S, startParams, seed, startPaused));
-                        """, PlanModel.VALUES, PlanModel.RESULT, scene.sceneCode()).build());
+                        // 强类型启动参数收口（设计说明书 3.1 三件套）：线格式与既有 REST 契约完全一致
+                        $T dto = $T.fromMap(startParams);
+                        return $T.ok(sessionManager.startSession(moduleRuntime, $S, dto.getInitialOverrides(), dto.getSeed(), dto.getStartPaused()));
+                        """, ClassName.get(model.basePkg + ".model.dto", DtoWsRepositoryLayerEmitter.startDtoSimple(scene)),
+                        ClassName.get(model.basePkg + ".model.dto", DtoWsRepositoryLayerEmitter.startDtoSimple(scene)),
+                        PlanModel.RESULT, scene.sceneCode()).build());
         // GET /sessions
         cb.addMethod(operation("listSessions", "列出本场景在途会话摘要")
                 .addAnnotation(AnnotationSpec.builder(GET_MAPPING).addMember("value", "$S", "/sessions").build())
@@ -221,7 +229,11 @@ public final class ServiceLayerEmitter {
                 .addAnnotation(AnnotationSpec.builder(GET_MAPPING).addMember("value", "$S", "/sessions/{sessionId}/snapshot").build())
                 .addParameter(ParameterSpec.builder(String.class, "sessionId").addAnnotation(PATH_VARIABLE).build())
                 .returns(PlanModel.resultOf(PlanModel.SNAPSHOT))
-                .addStatement("return $T.ok(sessionManager.getSnapshot(sessionId))", PlanModel.RESULT).build());
+                .addCode("""
+                        var snapshot = sessionManager.getSnapshot(sessionId);
+                        snapshotRepository.save(sessionId, snapshot);
+                        return $T.ok(snapshot);
+                        """, PlanModel.RESULT).build());
         // speed / pause / resume / stop
         cb.addMethod(operation("setSpeed", "设置期望倍速（孪生过程运行期间由底座强制锁 1x）")
                 .addAnnotation(AnnotationSpec.builder(POST_MAPPING).addMember("value", "$S", "/sessions/{sessionId}/speed/{speed}").build())
@@ -243,7 +255,9 @@ public final class ServiceLayerEmitter {
                 .addAnnotation(AnnotationSpec.builder(DELETE_MAPPING).addMember("value", "$S", "/sessions/{sessionId}").build())
                 .addParameter(ParameterSpec.builder(String.class, "sessionId").addAnnotation(PATH_VARIABLE).build())
                 .returns(PlanModel.resultOf(ClassName.get(Void.class)))
-                .addStatement("sessionManager.stopSession(sessionId)").addStatement("return $T.ok(null)", PlanModel.RESULT).build());
+                .addStatement("sessionManager.stopSession(sessionId)")
+                .addStatement("snapshotRepository.remove(sessionId)")
+                .addStatement("return $T.ok(null)", PlanModel.RESULT).build());
         return JavaFile.builder(scene.controllerCn().packageName(), cb.build()).indent("    ").build();
     }
 

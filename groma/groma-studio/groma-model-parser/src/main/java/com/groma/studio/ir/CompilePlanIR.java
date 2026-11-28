@@ -393,10 +393,20 @@ import java.util.Map;
             String stateLabel,
             List<ConditionIR> conditions,
             String describe,
-            String expression
+            String expression,
+            /** R13/R15 前锚点（code4.html M5 收割，说明书 7.2）：过程启动条件全部通过后、
+             *  首次步进前把本规则的成员切换到 anchorTargetState（发 sx/sv/sa）；空 = 无前锚点 */
+            String anchorTargetState,
+            OperandIR anchorMember,
+            String anchorEnumTypeId
     ) {
         public ConditionRuleIR(OperandIR operand, String stateLabel, List<ConditionIR> conditions, String describe) {
             this(operand, stateLabel, conditions, describe, "");
+        }
+
+        public ConditionRuleIR(OperandIR operand, String stateLabel, List<ConditionIR> conditions,
+                               String describe, String expression) {
+            this(operand, stateLabel, conditions, describe, expression, "", null, "");
         }
     }
 

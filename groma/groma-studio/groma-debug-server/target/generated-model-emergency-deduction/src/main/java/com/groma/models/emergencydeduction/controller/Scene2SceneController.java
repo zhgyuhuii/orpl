@@ -3,9 +3,10 @@ package com.groma.models.emergencydeduction.controller;
 import com.groma.base.common.Result;
 import com.groma.base.common.annotation.GromaMeta;
 import com.groma.base.engine.GromaModuleRuntime;
-import com.groma.base.engine.GromaValues;
 import com.groma.base.engine.WorldSnapshot;
 import com.groma.base.engine.runtime.GromaSessionManager;
+import com.groma.models.emergencydeduction.model.dto.Scene2SceneStartDTO;
+import com.groma.models.emergencydeduction.repository.Scene2SceneSnapshotRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.lang.Object;
@@ -40,6 +41,8 @@ public class Scene2SceneController {
 
     private final GromaSessionManager sessionManager;
 
+    private final Scene2SceneSnapshotRepository snapshotRepository = new Scene2SceneSnapshotRepository();
+
     public Scene2SceneController(GromaModuleRuntime moduleRuntime,
             GromaSessionManager sessionManager) {
         this.moduleRuntime = moduleRuntime;
@@ -52,10 +55,9 @@ public class Scene2SceneController {
     @PostMapping("/sessions")
     public Result<String> startSession(
             @RequestBody(required = false) Map<String, Object> startParams) {
-        boolean startPaused = startParams != null && Boolean.TRUE.equals(startParams.get("startPaused"));
-        Long seed = startParams == null || startParams.get("seed") == null ? null
-                : GromaValues.toLong(startParams.get("seed"));
-        return Result.ok(sessionManager.startSession(moduleRuntime, "scene2", startParams, seed, startPaused));
+        // 强类型启动参数收口（设计说明书 3.1 三件套）：线格式与既有 REST 契约完全一致
+        Scene2SceneStartDTO dto = Scene2SceneStartDTO.fromMap(startParams);
+        return Result.ok(sessionManager.startSession(moduleRuntime, "scene2", dto.getInitialOverrides(), dto.getSeed(), dto.getStartPaused()));
     }
 
     @Operation(
@@ -80,7 +82,9 @@ public class Scene2SceneController {
     )
     @GetMapping("/sessions/{sessionId}/snapshot")
     public Result<WorldSnapshot> getSnapshot(@PathVariable String sessionId) {
-        return Result.ok(sessionManager.getSnapshot(sessionId));
+        var snapshot = sessionManager.getSnapshot(sessionId);
+        snapshotRepository.save(sessionId, snapshot);
+        return Result.ok(snapshot);
     }
 
     @Operation(
@@ -116,6 +120,7 @@ public class Scene2SceneController {
     @DeleteMapping("/sessions/{sessionId}")
     public Result<Void> stopSession(@PathVariable String sessionId) {
         sessionManager.stopSession(sessionId);
+        snapshotRepository.remove(sessionId);
         return Result.ok(null);
     }
 }

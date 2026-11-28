@@ -410,6 +410,34 @@ public final class BuiltinTools {
         }
     }
 
+    /** 集合 JSON 文本序列化的共享映射器（tools.jackson 3 非受检异常语义） */
+    private static final tools.jackson.databind.ObjectMapper ITEMS_JSON_MAPPER =
+            new tools.jackson.databind.ObjectMapper();
+
+    /**
+     * 存量方圆手写代码集合序列化习惯调用 {@code 列表.itemsToNJson()} 的桥（收割自 code4.html E6）：
+     * 集合元素为实体时逐个转存档状态快照（成员中文标识为键），其余元素按 JSON 原生类型直出；
+     * 单实体/Map/标量输入包装为单元素数组，null 输入返回 {@code "[]"}。
+     * 输出标准 JSON 数组文本，供写入文本型成员或跨过程传递。
+     */
+    public static String itemsToNJson(Object items) {
+        Object payload;
+        if (items == null) {
+            payload = List.of();
+        } else if (items instanceof java.util.Collection<?> coll) {
+            List<Object> normalized = new java.util.ArrayList<>(coll.size());
+            for (Object elem : coll) {
+                normalized.add(elem instanceof BaseSimEntity entity ? entity.exportState() : elem);
+            }
+            payload = normalized;
+        } else if (items instanceof BaseSimEntity entity) {
+            payload = List.of(entity.exportState());
+        } else {
+            payload = List.of(items);
+        }
+        return ITEMS_JSON_MAPPER.writeValueAsString(payload);
+    }
+
     public static void copyElements(Object target, Object source) {
         if (target instanceof List<?> && source instanceof java.util.Collection<?> src) {
             asList(target, "复制元素").addAll(src);

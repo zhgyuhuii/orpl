@@ -87,4 +87,30 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <!-- 仓内生成模型静态合包（code4.html E2 收割，说明书 1.3 模式一"常态多模型合包独立运行"）：
+             前置 = ModelPipelineService 配置 groma.pipeline.repo-models-root 指向仓库 groma-models
+             完成至少一次构建同步（模块目录与 SPI 随包）；此后 -Pbundled-models 打出的可执行 JAR
+             经 ServiceLoader 开箱挂载全部仓内生成模型。artifactId 稳定（无语料短哈希后缀），
+             目录名带哈希隔离多版本，仓内同基础名仅保留最新一份。 -->
+        <profile>
+            <id>bundled-models</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <dependencies>
+                <!-- 逐模型稳定坐标依赖（artifactId 无哈希；同步后仓内每基础名恰一份，reactor 直取） -->
+                <dependency>
+                    <groupId>com.groma</groupId>
+                    <artifactId>model-emergency-deduction</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>com.groma</groupId>
+                    <artifactId>model-smart-planning</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
 </project>

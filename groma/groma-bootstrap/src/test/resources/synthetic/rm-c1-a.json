@@ -320,7 +320,7 @@
           "conditions": [
             {
               "index": 1,
-              "code": "<",
+              "code": ">",
               "value": 50
             }
           ]

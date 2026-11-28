@@ -1,4 +1,5 @@
 com/groma/bootstrap/pipeline/StudioWorkspaceExportController.class
+com/groma/bootstrap/pipeline/GromaWebSocketConfiguration$SituationEndpoint$SituationTextHandler.class
 com/groma/bootstrap/pipeline/SessionArchiveService.class
 com/groma/bootstrap/pipeline/SessionRestController$StartSessionRequest.class
 com/groma/bootstrap/pipeline/GromaMcpEnginePortImpl$1.class
@@ -36,6 +37,7 @@ com/groma/bootstrap/pipeline/PipelineConfiguration.class
 com/groma/bootstrap/pipeline/GromaWebSocketConfiguration$SituationEndpoint.class
 com/groma/bootstrap/pipeline/SessionRestController$TriggerProcessRequest.class
 com/groma/bootstrap/pipeline/RemoteModelFetcher$FetchRequest.class
+com/groma/bootstrap/pipeline/RepoModelsSyncService.class
 com/groma/bootstrap/pipeline/GromaWebSocketConfiguration$DebugEndpoint.class
 com/groma/bootstrap/pipeline/GromaMcpEnginePortImpl$1Export.class
 com/groma/bootstrap/pipeline/SimDebugCoordinator$1.class
