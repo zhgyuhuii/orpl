@@ -37,3 +37,11 @@ groma/groma-bootstrap/groma-workspace/
 /*.docx
 /.dockerignore
 /.gitlab-ci.yml
+
+# --- 2026-11-28 仓库瘦身（避免无用产物入库）---
+**/target/*
+**/code*_files/
+**/code*.html
+**/.DS_Store
+**/data-*.json
+**/scene-*.json

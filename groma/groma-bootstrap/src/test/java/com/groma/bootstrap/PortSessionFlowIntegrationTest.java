@@ -46,7 +46,8 @@ class PortSessionFlowIntegrationTest {
 
     @Test
     void buildStartStepSnapshotArchiveAndRestore() throws Exception {
-        Path corpus = corpusDir().orElseThrow(() -> new IllegalStateException("未找到语料目录 docs/model"));
+        Path corpus = corpusDir().orElse(null);
+        org.junit.jupiter.api.Assumptions.assumeTrue(corpus != null, "语料为大文件不入库（git 瘦身决策 2026-11-28），缺失时跳过；本地可用 -Dgroma.corpus=<目录> 指定，跳过");
         Path workspace = Files.createTempDirectory("groma-port-ws");
         GromaSessionManager sessions = new GromaSessionManager(null, 8);
         try {

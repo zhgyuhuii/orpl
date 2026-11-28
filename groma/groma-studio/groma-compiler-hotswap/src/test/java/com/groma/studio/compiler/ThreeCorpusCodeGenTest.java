@@ -31,8 +31,8 @@ class ThreeCorpusCodeGenTest {
             "应急决策推演-a.json,应急决策推演-b.json,模型3-应急决策推演-关联-v825"
     })
     void generateCompilePerCorpus(String fileA, String fileB, String label) throws IOException {
-        Path dir = RealCorpusEndToEndTest.corpusDir()
-                .orElseThrow(() -> new IllegalStateException("未找到语料目录 docs/model"));
+        Path dir = RealCorpusEndToEndTest.corpusDir().orElse(null);
+        org.junit.jupiter.api.Assumptions.assumeTrue(dir != null, "语料为大文件不入库（git 瘦身决策 2026-11-28），缺失时跳过；本地可用 -Dgroma.corpus=<目录> 指定，跳过");
         GromaModuleIR ir = new AbModelMergerAndParser().parse(dir.resolve(fileA), dir.resolve(fileB));
         GeneratedModuleBundle bundle = new GromaModuleSourceGeneratorFacade().generateModule(ir, Map.of());
 

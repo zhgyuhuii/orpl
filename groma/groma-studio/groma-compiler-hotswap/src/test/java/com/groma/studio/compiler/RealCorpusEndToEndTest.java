@@ -53,8 +53,8 @@ public class RealCorpusEndToEndTest {
 
     /** 解析 + 生成 + 落盘（供编译与人工核对），返回生成包 */
     public static GeneratedModuleBundle generateRealModule() {
-        Path dir = corpusDir().orElseThrow(() -> new IllegalStateException(
-                "未找到语料目录 docs/model（可用 -Dgroma.corpus=<目录> 指定）"));
+        Path dir = corpusDir().orElse(null);
+        org.junit.jupiter.api.Assumptions.assumeTrue(dir != null, "语料为大文件不入库（git 瘦身决策 2026-11-28），缺失时跳过；本地可用 -Dgroma.corpus=<目录> 指定，跳过");
         GromaModuleIR ir = new AbModelMergerAndParser().parse(dir.resolve("data-a.json"), dir.resolve("data-b.json"));
         GeneratedModuleBundle bundle = new GromaModuleSourceGeneratorFacade().generateModule(ir, Map.of());
         // 解析告警（含 T1.1 同拍双读时钟诊断）落盘，供逐项核对
@@ -433,7 +433,8 @@ public class RealCorpusEndToEndTest {
     }
 
     private static GromaModuleIR bundleHolder(GeneratedModuleBundle bundle) {
-        Path dir = corpusDir().orElseThrow();
+        Path dir = corpusDir().orElse(null);
+        org.junit.jupiter.api.Assumptions.assumeTrue(dir != null, "语料为大文件不入库（git 瘦身决策 2026-11-28），缺失时跳过；本地可用 -Dgroma.corpus=<目录> 指定，跳过");
         return new AbModelMergerAndParser().parse(dir.resolve("data-a.json"), dir.resolve("data-b.json"));
     }
 }
